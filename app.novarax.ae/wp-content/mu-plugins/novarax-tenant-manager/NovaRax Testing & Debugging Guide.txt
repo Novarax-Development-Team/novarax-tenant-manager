@@ -1,0 +1,639 @@
+# NovaRax Multi-Tenant System - Testing & Debugging Guide
+
+## 📋 Table of Contents
+1. [Pre-Flight Checklist](#pre-flight-checklist)
+2. [Testing Master Dashboard](#testing-master-dashboard)
+3. [Testing Tenant Provisioning](#testing-tenant-provisioning)
+4. [Testing API Endpoints](#testing-api-endpoints)
+5. [Testing Module Licensing](#testing-module-licensing)
+6. [Common Issues & Solutions](#common-issues-solutions)
+7. [Debug Mode Setup](#debug-mode-setup)
+8. [Testing Checklist](#testing-checklist)
+
+---
+
+## 🔧 Pre-Flight Checklist
+
+### **Server Requirements**
+- [ ] PHP 8.0+ installed
+- [ ] MySQL 8.0+ installed
+- [ ] WordPress 6.0+ installed
+- [ ] WooCommerce installed and activated
+- [ ] WooCommerce Subscriptions installed (if using subscriptions)
+- [ ] Root/sudo access for database creation
+- [ ] Wildcard SSL certificate installed (`*.app.novarax.ae`)
+
+### **DNS Configuration**
+- [ ] Wildcard DNS record exists: `*.app.novarax.ae → Your Server IP`
+- [ ] Main domain resolves: `app.novarax.ae → Your Server IP`
+- [ ] Test with: `nslookup test.app.novarax.ae`
+
+### **Nginx/Apache Configuration**
+```bash
+# Test wildcard subdomain routing
+curl -H "Host: test123.app.novarax.ae" https://your-server-ip/
+# Should resolve without errors
+```
+
+### **WordPress Installations**
+- [ ] Master installed at: `/var/www/app.novarax.ae`
+- [ ] Tenant codebase at: `/var/www/tenant-dashboard`
+- [ ] MU-Plugin installed: `novarax-tenant-manager/` in master
+- [ ] MU-Plugin installed: `novarax-tenant-bootstrap.php` in tenant codebase
+
+---
+
+## 🎯 Testing Master Dashboard
+
+### **Step 1: Verify Plugin Activation**
+```bash
+# SSH into server
+cd /var/www/app.novarax.ae
+wp plugin list --path=/var/www/app.novarax.ae
+```
+
+Expected output:
+```
+novarax-tenant-manager  | must-use | NA      | NovaRax Tenant Manager
+```
+
+### **Step 2: Check Database Tables**
+```sql
+-- Connect to master database
+mysql -u root -p
+
+USE novarax_master;
+
+-- Verify tables exist
+SHOW TABLES LIKE 'wp_novarax_%';
+
+-- Should show:
+-- wp_novarax_tenants
+-- wp_novarax_modules
+-- wp_novarax_tenant_modules
+-- wp_novarax_api_keys
+-- wp_novarax_audit_logs
+-- wp_novarax_usage_stats
+```
+
+### **Step 3: Access Admin Dashboard**
+1. Navigate to: `https://app.novarax.ae/wp-admin`
+2. Login with admin credentials
+3. Check for **"NovaRax"** menu in sidebar
+4. Click **NovaRax → Dashboard**
+5. Verify statistics display correctly
+
+**Expected Result:**
+- Dashboard loads without errors
+- Statistics show 0 tenants initially
+- "Add New Tenant" button is visible
+
+### **Step 4: Test Tenant Creation Form**
+1. Go to **NovaRax → Add New Tenant**
+2. Type username: `testuser`
+3. Verify subdomain preview updates to: `testuser.app.novarax.ae`
+4. Fill all required fields
+5. Click **"Create Tenant"**
+
+**Debug if fails:**
+```php
+// Check WordPress debug log
+tail -f /var/www/app.novarax.ae/wp-content/debug.log
+```
+
+---
+
+## 🏗️ Testing Tenant Provisioning
+
+### **Step 1: Create Test Tenant Manually**
+```bash
+# Via WP-CLI
+wp eval 'novarax_tenant_manager()->tenant_operations->create_tenant(array(
+    "full_name" => "Test User",
+    "email" => "test@example.com",
+    "username" => "testuser",
+    "password" => "TestPassword123!@#",
+    "company_name" => "Test Company"
+));' --path=/var/www/app.novarax.ae
+```
+
+### **Step 2: Verify Database Creation**
+```sql
+-- Check if tenant database was created
+SHOW DATABASES LIKE 'novarax_tenant_%';
+
+-- Should show: novarax_tenant_testuser
+
+-- Check tenant record
+USE novarax_master;
+SELECT * FROM wp_novarax_tenants WHERE tenant_username = 'testuser';
+```
+
+**Expected Fields:**
+- `status`: Should be `pending` initially, then `active` after provisioning
+- `subdomain`: `testuser.app.novarax.ae`
+- `database_name`: `novarax_tenant_testuser`
+
+### **Step 3: Check Provisioning Queue**
+```sql
+-- Check if tenant is in queue
+SELECT * FROM wp_options WHERE option_name = 'novarax_provisioning_queue';
+```
+
+### **Step 4: Trigger Manual Provisioning**
+```bash
+# Trigger provisioning queue via WP-CLI
+wp cron event run novarax_process_provisioning_queue --path=/var/www/app.novarax.ae
+
+# OR via Admin Dashboard:
+# Go to NovaRax → Dashboard → Click "Process Queue Now"
+```
+
+### **Step 5: Verify Tenant Access**
+1. Open browser in incognito mode
+2. Navigate to: `https://testuser.app.novarax.ae`
+3. Should see WordPress login screen (not 404)
+4. Try logging in with tenant credentials
+
+**Debug Connection Issues:**
+```bash
+# Test DNS resolution
+nslookup testuser.app.novarax.ae
+
+# Test subdomain routing
+curl -I https://testuser.app.novarax.ae
+
+# Check Nginx error log
+tail -f /var/log/nginx/error.log
+```
+
+---
+
+## 🔌 Testing API Endpoints
+
+### **Step 1: Test Health Check**
+```bash
+curl https://app.novarax.ae/wp-json/novarax/v1/health
+```
+
+**Expected Response:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2024-11-07 10:30:00",
+  "version": "1.0.0"
+}
+```
+
+### **Step 2: Get API Key**
+```sql
+-- Get tenant's API key
+SELECT api_key FROM wp_novarax_api_keys 
+WHERE tenant_id = (SELECT id FROM wp_novarax_tenants WHERE tenant_username = 'testuser');
+```
+
+### **Step 3: Test License Check Endpoint**
+```bash
+API_KEY="novarax_your_api_key_here"
+TENANT_ID=1
+
+curl -X POST https://app.novarax.ae/wp-json/novarax/v1/check-license \
+  -H "Authorization: ApiKey $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": '$TENANT_ID',
+    "module_slug": "money-manager"
+  }'
+```
+
+**Expected Response (No License):**
+```json
+{
+  "valid": false,
+  "message": "No active license for this module",
+  "module": {
+    "slug": "money-manager",
+    "name": "Money Manager"
+  }
+}
+```
+
+### **Step 4: Test Module Status Endpoint**
+```bash
+curl https://app.novarax.ae/wp-json/novarax/v1/module-status?tenant_id=$TENANT_ID \
+  -H "Authorization: ApiKey $API_KEY"
+```
+
+**Expected Response:**
+```json
+{
+  "tenant_id": 1,
+  "tenant_status": "active",
+  "modules": [],
+  "total_modules": 0,
+  "active_modules": 0,
+  "checked_at": "2024-11-07 10:35:00"
+}
+```
+
+---
+
+## 🎫 Testing Module Licensing
+
+### **Step 1: Create Module Record**
+```bash
+wp eval '
+$module_manager = new NovaRax_Module_Manager();
+$module_manager->register_module(array(
+    "module_name" => "Money Manager",
+    "module_slug" => "money-manager",
+    "plugin_path" => "novarax-money-manager/novarax-money-manager.php",
+    "description" => "Personal finance management",
+    "version" => "1.0.0"
+));
+' --path=/var/www/app.novarax.ae
+```
+
+### **Step 2: Create WooCommerce Product**
+1. Go to **Products → Add New**
+2. Create product: "Money Manager Subscription"
+3. Price: $19/month
+4. Product Type: **Simple Subscription** (if using WooCommerce Subscriptions)
+5. Billing Period: Monthly
+6. Scroll to **NovaRax Module Mapping** metabox
+7. Select: **Money Manager**
+8. Publish product
+
+### **Step 3: Test Purchase Flow**
+1. Logout from admin
+2. Login as tenant user: `testuser`
+3. Go to: `https://app.novarax.ae/apps`
+4. Add "Money Manager" to cart
+5. Proceed to checkout
+6. Complete order (use test mode)
+
+### **Step 4: Verify Module Activation**
+```sql
+-- Check tenant_modules table
+SELECT tm.*, m.module_name, m.module_slug 
+FROM wp_novarax_tenant_modules tm
+JOIN wp_novarax_modules m ON tm.module_id = m.id
+WHERE tm.tenant_id = 1;
+```
+
+**Expected:**
+- `status`: `active`
+- `activated_at`: Current timestamp
+- `expires_at`: 1 month from now (if subscription)
+
+### **Step 5: Test Plugin Activation on Tenant Dashboard**
+1. Navigate to: `https://testuser.app.novarax.ae/wp-admin`
+2. Check left sidebar for **"Money Manager"** menu
+3. If not visible, check:
+   - Bootstrap plugin loaded
+   - API key configured
+   - License check working
+
+**Debug Plugin Loading:**
+```bash
+# SSH into server
+cd /var/www/tenant-dashboard
+
+# Check active plugins via WP-CLI
+wp plugin list --path=/var/www/tenant-dashboard
+
+# Check tenant options
+wp option get novarax_tenant_id --path=/var/www/tenant-dashboard
+wp option get novarax_api_key --path=/var/www/tenant-dashboard
+
+# Manually check license
+wp eval '
+$bootstrap = NovaRax_Tenant_Bootstrap::get_instance();
+var_dump($bootstrap->check_module_license("money-manager"));
+' --path=/var/www/tenant-dashboard
+```
+
+---
+
+## ⚠️ Common Issues & Solutions
+
+### **Issue 1: Subdomain Returns 404**
+
+**Symptoms:**
+- `https://testuser.app.novarax.ae` shows 404 error
+- Works on master but not tenant subdomains
+
+**Solutions:**
+```bash
+# 1. Check DNS
+nslookup testuser.app.novarax.ae
+# Should resolve to your server IP
+
+# 2. Check Nginx configuration
+nginx -t
+sudo systemctl reload nginx
+
+# 3. Verify wildcard vhost exists
+cat /etc/nginx/sites-available/tenant-wildcard.conf
+
+# 4. Check WordPress is accessible
+ls -la /var/www/tenant-dashboard/wp-config.php
+```
+
+**Fix Nginx Wildcard Config:**
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name ~^(?<subdomain>.+)\.app\.novarax\.ae$;
+    
+    root /var/www/tenant-dashboard;
+    index index.php;
+    
+    ssl_certificate /path/to/wildcard.crt;
+    ssl_certificate_key /path/to/wildcard.key;
+    
+    location / {
+        try_files $uri $uri/ /index.php?$args;
+    }
+    
+    location ~ \.php$ {
+        fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+}
+```
+
+---
+
+### **Issue 2: Database Not Created**
+
+**Symptoms:**
+- Tenant shows as `pending` indefinitely
+- Error in logs about database creation
+
+**Solutions:**
+```bash
+# 1. Check MySQL permissions
+mysql -u root -p
+SHOW GRANTS FOR 'wordpress_user'@'localhost';
+# Should have CREATE, DROP privileges
+
+# 2. Grant necessary permissions
+GRANT CREATE, DROP, ALTER ON *.* TO 'wordpress_user'@'localhost';
+FLUSH PRIVILEGES;
+
+# 3. Check if DB_ROOT_USER and DB_ROOT_PASSWORD are defined
+grep DB_ROOT wp-config.php
+
+# 4. Add to wp-config.php if missing:
+define('DB_ROOT_USER', 'root');
+define('DB_ROOT_PASSWORD', 'your_root_password');
+```
+
+---
+
+### **Issue 3: License Check Always Fails**
+
+**Symptoms:**
+- Module shows as inactive despite subscription
+- API returns "No valid license"
+
+**Debug Steps:**
+```bash
+# 1. Verify API key exists in tenant database
+wp option get novarax_api_key --path=/var/www/tenant-dashboard
+
+# 2. Verify API key is valid in master
+wp eval '
+$api_key = "YOUR_API_KEY_HERE";
+$auth = new NovaRax_API_Authentication();
+var_dump($auth->validate_api_key($api_key));
+' --path=/var/www/app.novarax.ae
+
+# 3. Test API endpoint directly
+curl -X POST https://app.novarax.ae/wp-json/novarax/v1/check-license \
+  -H "Authorization: ApiKey YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id": 1, "module_slug": "money-manager"}'
+
+# 4. Check tenant_modules table
+mysql -u root -p
+USE novarax_master;
+SELECT * FROM wp_novarax_tenant_modules WHERE tenant_id = 1;
+```
+
+---
+
+### **Issue 4: Provisioning Queue Stuck**
+
+**Symptoms:**
+- Tenant stays in `pending` status
+- Queue shows items but nothing processes
+
+**Solutions:**
+```bash
+# 1. Check if cron is running
+wp cron event list --path=/var/www/app.novarax.ae
+
+# 2. Manually trigger provisioning
+wp cron event run novarax_process_provisioning_queue --path=/var/www/app.novarax.ae
+
+# 3. Check provisioning queue status
+wp eval '
+$queue = new NovaRax_Provisioning_Queue();
+var_dump($queue->get_statistics());
+' --path=/var/www/app.novarax.ae
+
+# 4. Clear stuck items
+wp eval '
+$queue = new NovaRax_Provisioning_Queue();
+$queue->clear_failed_items();
+' --path=/var/www/app.novarax.ae
+
+# 5. Retry failed tenant
+wp eval '
+$queue = new NovaRax_Provisioning_Queue();
+$queue->retry_item(1); // Tenant ID
+' --path=/var/www/app.novarax.ae
+```
+
+---
+
+## 🐛 Debug Mode Setup
+
+### **Enable WordPress Debug Mode**
+
+**Master Dashboard (`/var/www/app.novarax.ae/wp-config.php`):**
+```php
+define('WP_DEBUG', true);
+define('WP_DEBUG_LOG', true);
+define('WP_DEBUG_DISPLAY', false);
+define('SCRIPT_DEBUG', true);
+```
+
+**Tenant Dashboard (`/var/www/tenant-dashboard/wp-config.php`):**
+```php
+define('WP_DEBUG', true);
+define('WP_DEBUG_LOG', true);
+define('WP_DEBUG_DISPLAY', false);
+```
+
+### **Monitor Logs in Real-Time**
+```bash
+# Master logs
+tail -f /var/www/app.novarax.ae/wp-content/debug.log
+
+# Tenant logs
+tail -f /var/www/tenant-dashboard/wp-content/debug.log
+
+# NovaRax specific logs
+tail -f /var/www/app.novarax.ae/wp-content/uploads/novarax-logs/*.log
+
+# Nginx error logs
+tail -f /var/log/nginx/error.log
+
+# PHP-FPM logs
+tail -f /var/log/php8.2-fpm.log
+```
+
+### **Enable Query Monitor Plugin**
+```bash
+# Install Query Monitor for debugging
+wp plugin install query-monitor --activate --path=/var/www/app.novarax.ae
+```
+
+---
+
+## ✅ Complete Testing Checklist
+
+### **Master Dashboard Tests**
+- [ ] Plugin activates without errors
+- [ ] Database tables created successfully
+- [ ] Admin menu appears correctly
+- [ ] Dashboard shows statistics
+- [ ] Tenant creation form loads
+- [ ] Username validation works (AJAX)
+- [ ] Subdomain preview updates dynamically
+- [ ] Tenant list displays correctly
+- [ ] Tenant editing works
+- [ ] Tenant deletion works (with backup)
+
+### **Provisioning Tests**
+- [ ] Tenant database created automatically
+- [ ] Database user created with correct permissions
+- [ ] WordPress core schema imported
+- [ ] Tenant options populated (siteurl, home, tenant_id)
+- [ ] API key generated and stored
+- [ ] Subdomain resolves correctly
+- [ ] Tenant status changes to `active`
+- [ ] Welcome email sent successfully
+
+### **API Tests**
+- [ ] Health check endpoint responds
+- [ ] Session validation works
+- [ ] License check returns correct status
+- [ ] Module status endpoint works
+- [ ] Tenant info endpoint returns data
+- [ ] Activity logging works
+- [ ] API key authentication works
+- [ ] Rate limiting functions (test with 100+ requests)
+
+### **Module Licensing Tests**
+- [ ] Module record created in database
+- [ ] WooCommerce product maps to module
+- [ ] Order completion triggers module activation
+- [ ] Subscription creation activates module
+- [ ] Module appears in tenant dashboard
+- [ ] Module menu shows in sidebar
+- [ ] Module functions work correctly
+- [ ] Subscription expiration deactivates module
+- [ ] Grace period works (7 days default)
+- [ ] Renewal reactivates module
+- [ ] Expiration notices display correctly
+
+### **Tenant Dashboard Tests**
+- [ ] Bootstrap plugin loads automatically
+- [ ] Session validation works
+- [ ] Active plugins filtered by license
+- [ ] "My Apps" menu appears
+- [ ] Subscriptions page shows active modules
+- [ ] License expiration warnings display
+- [ ] Expired module notices show correctly
+- [ ] Links to master dashboard work
+- [ ] API communication successful
+
+### **SSO Tests**
+- [ ] Login on master creates session
+- [ ] Session cookie shared across subdomains
+- [ ] Tenant dashboard auto-authenticates
+- [ ] Logout works on both sides
+- [ ] Session expiration handled correctly
+
+---
+
+## 📊 Performance Testing
+
+### **Load Testing API Endpoints**
+```bash
+# Install Apache Bench
+sudo apt install apache2-utils
+
+# Test health check endpoint (100 requests, 10 concurrent)
+ab -n 100 -c 10 https://app.novarax.ae/wp-json/novarax/v1/health
+
+# Test license check with auth
+ab -n 100 -c 10 -H "Authorization: ApiKey YOUR_KEY" \
+   -p license-check.json -T application/json \
+   https://app.novarax.ae/wp-json/novarax/v1/check-license
+```
+
+**Expected Results:**
+- Response time: < 500ms average
+- No failed requests
+- Memory usage stable
+
+---
+
+## 🎓 Next Steps After Testing
+
+1. **Document Issues:** Keep a log of all issues encountered and solutions
+2. **Create Backup:** Backup working configuration before making changes
+3. **Set Up Monitoring:** Install monitoring tools (New Relic, Scout APM)
+4. **Configure Alerts:** Email notifications for failed provisioning
+5. **Schedule Maintenance:** Regular database cleanup, log rotation
+6. **User Training:** Create guides for admins and end-users
+
+---
+
+## 🆘 Getting Help
+
+If you encounter issues not covered here:
+
+1. Check WordPress debug log
+2. Check NovaRax specific logs
+3. Review recent git commits/changes
+4. Test with WP-CLI for quick debugging
+5. Check server resources (disk, memory, CPU)
+
+**Useful Commands:**
+```bash
+# Check system resources
+df -h                  # Disk space
+free -m               # Memory
+top                   # CPU usage
+
+# Check WordPress status
+wp core version
+wp plugin list
+wp db check
+
+# Test database connection
+wp db query "SELECT 1"
+```
+
+---
+
+**Testing Complete!** 🎉
+
+Your NovaRax multi-tenant system is now thoroughly tested and ready for production deployment.

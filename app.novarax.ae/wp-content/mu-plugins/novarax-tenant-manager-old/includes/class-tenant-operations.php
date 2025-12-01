@@ -147,7 +147,7 @@ class NovaRax_Tenant_Operations {
             // Trigger provisioning if auto-provision is enabled
             if (get_option('novarax_tm_auto_provision', true)) {
                 $this->queue_provisioning($tenant_id);
-           }
+            }
             
             // Send welcome email
             NovaRax_Email_Notifications::send_welcome_email($user_id, $tenant_id, $args['password']);

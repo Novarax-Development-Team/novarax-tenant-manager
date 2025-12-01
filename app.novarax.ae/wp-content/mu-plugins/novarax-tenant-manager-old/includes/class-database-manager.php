@@ -314,41 +314,6 @@ class NovaRax_Database_Manager {
         
         NovaRax_Logger::info("Privileges granted to {$username} on {$database_name}");
         
-//changes
-
-// IMPORTANT: Store database credentials in tenant metadata
-global $wpdb;
-$tenant_record = $wpdb->get_row($wpdb->prepare(
-    "SELECT * FROM {$wpdb->prefix}novarax_tenants WHERE database_name = %s",
-    $database_name
-), ARRAY_A);
-
-if ($tenant_record) {
-    // Get existing metadata
-    $metadata = !empty($tenant_record['metadata']) ? json_decode($tenant_record['metadata'], true) : array();
-    
-    // Add database credentials
-    $metadata['db_username'] = $username;
-    $metadata['db_password'] = $password;
-    
-    // Update tenant record
-    $wpdb->update(
-        $wpdb->prefix . 'novarax_tenants',
-        array('metadata' => json_encode($metadata)),
-        array('id' => $tenant_record['id']),
-        array('%s'),
-        array('%d')
-    );
-    
-    NovaRax_Logger::info("Database credentials stored in metadata for tenant ID: {$tenant_record['id']}");
-} else {
-    NovaRax_Logger::warning("Could not find tenant record to store credentials for database: {$database_name}");
-}
-
-//end of changes 
-
-
-
         // Import WordPress core schema
         $this->import_wordpress_schema($database_name, $username, $password);
         
@@ -381,418 +346,232 @@ if ($tenant_record) {
      * @param string $password Database password
      * @return bool Success status
      */
-
-private function import_wordpress_schema($database_name, $username, $password) {
+   private function import_wordpress_schema($database_name, $username, $password) {
     try {
         NovaRax_Logger::info("Importing WordPress schema to: {$database_name}");
         
-        // Use root connection for reliability
-        $root_user = defined('DB_ROOT_USER') ? DB_ROOT_USER : 'root';
-        $root_pass = defined('DB_ROOT_PASSWORD') ? DB_ROOT_PASSWORD : '';
-        
-        $mysqli = new mysqli('localhost', $root_user, $root_pass, $database_name);
-        
-        if ($mysqli->connect_error) {
-            throw new Exception('Failed to connect to tenant database: ' . $mysqli->connect_error);
+        // Parse DB_HOST for port
+        $db_host = DB_HOST;
+        $port = 3306;
+        if (strpos($db_host, ':') !== false) {
+            list($db_host, $port) = explode(':', $db_host);
+            $port = (int) $port;
         }
         
-        NovaRax_Logger::info("Connected to tenant database");
+        // Create new wpdb instance for tenant database
+        $tenant_db = new wpdb($username, $password, $database_name, DB_HOST);
+        $tenant_db->suppress_errors(false);
+        $tenant_db->show_errors(true);
         
-        $charset_collate = "DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci";
+        // Check connection
+        if (!empty($tenant_db->last_error)) {
+            throw new Exception('Failed to connect to tenant database: ' . $tenant_db->last_error);
+        }
         
-        // Define all WordPress core tables
-        $tables_sql = array(
-            'wp_users' => "CREATE TABLE IF NOT EXISTS `wp_users` (
-                `ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                `user_login` varchar(60) NOT NULL DEFAULT '',
-                `user_pass` varchar(255) NOT NULL DEFAULT '',
-                `user_nicename` varchar(50) NOT NULL DEFAULT '',
-                `user_email` varchar(100) NOT NULL DEFAULT '',
-                `user_url` varchar(100) NOT NULL DEFAULT '',
-                `user_registered` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                `user_activation_key` varchar(255) NOT NULL DEFAULT '',
-                `user_status` int(11) NOT NULL DEFAULT 0,
-                `display_name` varchar(250) NOT NULL DEFAULT '',
-                PRIMARY KEY (`ID`),
-                KEY `user_login_key` (`user_login`),
-                KEY `user_nicename` (`user_nicename`),
-                KEY `user_email` (`user_email`)
-            ) ENGINE=InnoDB {$charset_collate}",
-            
-            'wp_usermeta' => "CREATE TABLE IF NOT EXISTS `wp_usermeta` (
-                `umeta_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                `user_id` bigint(20) unsigned NOT NULL DEFAULT 0,
-                `meta_key` varchar(255) DEFAULT NULL,
-                `meta_value` longtext,
-                PRIMARY KEY (`umeta_id`),
-                KEY `user_id` (`user_id`),
-                KEY `meta_key` (`meta_key`(191))
-            ) ENGINE=InnoDB {$charset_collate}",
-            
-            'wp_options' => "CREATE TABLE IF NOT EXISTS `wp_options` (
-                `option_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                `option_name` varchar(191) NOT NULL DEFAULT '',
-                `option_value` longtext NOT NULL,
-                `autoload` varchar(20) NOT NULL DEFAULT 'yes',
-                PRIMARY KEY (`option_id`),
-                UNIQUE KEY `option_name` (`option_name`),
-                KEY `autoload` (`autoload`)
-            ) ENGINE=InnoDB {$charset_collate}",
-            
-            'wp_posts' => "CREATE TABLE IF NOT EXISTS `wp_posts` (
-                `ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                `post_author` bigint(20) unsigned NOT NULL DEFAULT 0,
-                `post_date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                `post_date_gmt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                `post_content` longtext NOT NULL,
-                `post_title` text NOT NULL,
-                `post_excerpt` text NOT NULL,
-                `post_status` varchar(20) NOT NULL DEFAULT 'publish',
-                `comment_status` varchar(20) NOT NULL DEFAULT 'open',
-                `ping_status` varchar(20) NOT NULL DEFAULT 'open',
-                `post_password` varchar(255) NOT NULL DEFAULT '',
-                `post_name` varchar(200) NOT NULL DEFAULT '',
-                `to_ping` text NOT NULL,
-                `pinged` text NOT NULL,
-                `post_modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                `post_modified_gmt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                `post_content_filtered` longtext NOT NULL,
-                `post_parent` bigint(20) unsigned NOT NULL DEFAULT 0,
-                `guid` varchar(255) NOT NULL DEFAULT '',
-                `menu_order` int(11) NOT NULL DEFAULT 0,
-                `post_type` varchar(20) NOT NULL DEFAULT 'post',
-                `post_mime_type` varchar(100) NOT NULL DEFAULT '',
-                `comment_count` bigint(20) NOT NULL DEFAULT 0,
-                PRIMARY KEY (`ID`),
-                KEY `post_name` (`post_name`(191)),
-                KEY `type_status_date` (`post_type`,`post_status`,`post_date`,`ID`),
-                KEY `post_parent` (`post_parent`),
-                KEY `post_author` (`post_author`)
-            ) ENGINE=InnoDB {$charset_collate}",
-            
-            'wp_postmeta' => "CREATE TABLE IF NOT EXISTS `wp_postmeta` (
-                `meta_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                `post_id` bigint(20) unsigned NOT NULL DEFAULT 0,
-                `meta_key` varchar(255) DEFAULT NULL,
-                `meta_value` longtext,
-                PRIMARY KEY (`meta_id`),
-                KEY `post_id` (`post_id`),
-                KEY `meta_key` (`meta_key`(191))
-            ) ENGINE=InnoDB {$charset_collate}",
-            
-            'wp_comments' => "CREATE TABLE IF NOT EXISTS `wp_comments` (
-                `comment_ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                `comment_post_ID` bigint(20) unsigned NOT NULL DEFAULT 0,
-                `comment_author` tinytext NOT NULL,
-                `comment_author_email` varchar(100) NOT NULL DEFAULT '',
-                `comment_author_url` varchar(200) NOT NULL DEFAULT '',
-                `comment_author_IP` varchar(100) NOT NULL DEFAULT '',
-                `comment_date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                `comment_date_gmt` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                `comment_content` text NOT NULL,
-                `comment_karma` int(11) NOT NULL DEFAULT 0,
-                `comment_approved` varchar(20) NOT NULL DEFAULT '1',
-                `comment_agent` varchar(255) NOT NULL DEFAULT '',
-                `comment_type` varchar(20) NOT NULL DEFAULT 'comment',
-                `comment_parent` bigint(20) unsigned NOT NULL DEFAULT 0,
-                `user_id` bigint(20) unsigned NOT NULL DEFAULT 0,
-                PRIMARY KEY (`comment_ID`),
-                KEY `comment_post_ID` (`comment_post_ID`),
-                KEY `comment_approved_date_gmt` (`comment_approved`,`comment_date_gmt`),
-                KEY `comment_date_gmt` (`comment_date_gmt`),
-                KEY `comment_parent` (`comment_parent`)
-            ) ENGINE=InnoDB {$charset_collate}",
-            
-            'wp_commentmeta' => "CREATE TABLE IF NOT EXISTS `wp_commentmeta` (
-                `meta_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                `comment_id` bigint(20) unsigned NOT NULL DEFAULT 0,
-                `meta_key` varchar(255) DEFAULT NULL,
-                `meta_value` longtext,
-                PRIMARY KEY (`meta_id`),
-                KEY `comment_id` (`comment_id`),
-                KEY `meta_key` (`meta_key`(191))
-            ) ENGINE=InnoDB {$charset_collate}",
-            
-            'wp_terms' => "CREATE TABLE IF NOT EXISTS `wp_terms` (
-                `term_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                `name` varchar(200) NOT NULL DEFAULT '',
-                `slug` varchar(200) NOT NULL DEFAULT '',
-                `term_group` bigint(10) NOT NULL DEFAULT 0,
-                PRIMARY KEY (`term_id`),
-                KEY `slug` (`slug`(191)),
-                KEY `name` (`name`(191))
-            ) ENGINE=InnoDB {$charset_collate}",
-            
-            'wp_termmeta' => "CREATE TABLE IF NOT EXISTS `wp_termmeta` (
-                `meta_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                `term_id` bigint(20) unsigned NOT NULL DEFAULT 0,
-                `meta_key` varchar(255) DEFAULT NULL,
-                `meta_value` longtext,
-                PRIMARY KEY (`meta_id`),
-                KEY `term_id` (`term_id`),
-                KEY `meta_key` (`meta_key`(191))
-            ) ENGINE=InnoDB {$charset_collate}",
-            
-            'wp_term_taxonomy' => "CREATE TABLE IF NOT EXISTS `wp_term_taxonomy` (
-                `term_taxonomy_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                `term_id` bigint(20) unsigned NOT NULL DEFAULT 0,
-                `taxonomy` varchar(32) NOT NULL DEFAULT '',
-                `description` longtext NOT NULL,
-                `parent` bigint(20) unsigned NOT NULL DEFAULT 0,
-                `count` bigint(20) NOT NULL DEFAULT 0,
-                PRIMARY KEY (`term_taxonomy_id`),
-                UNIQUE KEY `term_id_taxonomy` (`term_id`,`taxonomy`),
-                KEY `taxonomy` (`taxonomy`)
-            ) ENGINE=InnoDB {$charset_collate}",
-            
-            'wp_term_relationships' => "CREATE TABLE IF NOT EXISTS `wp_term_relationships` (
-                `object_id` bigint(20) unsigned NOT NULL DEFAULT 0,
-                `term_taxonomy_id` bigint(20) unsigned NOT NULL DEFAULT 0,
-                `term_order` int(11) NOT NULL DEFAULT 0,
-                PRIMARY KEY (`object_id`,`term_taxonomy_id`),
-                KEY `term_taxonomy_id` (`term_taxonomy_id`)
-            ) ENGINE=InnoDB {$charset_collate}",
-            
-            'wp_links' => "CREATE TABLE IF NOT EXISTS `wp_links` (
-                `link_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-                `link_url` varchar(255) NOT NULL DEFAULT '',
-                `link_name` varchar(255) NOT NULL DEFAULT '',
-                `link_image` varchar(255) NOT NULL DEFAULT '',
-                `link_target` varchar(25) NOT NULL DEFAULT '',
-                `link_description` varchar(255) NOT NULL DEFAULT '',
-                `link_visible` varchar(20) NOT NULL DEFAULT 'Y',
-                `link_owner` bigint(20) unsigned NOT NULL DEFAULT 1,
-                `link_rating` int(11) NOT NULL DEFAULT 0,
-                `link_updated` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                `link_rel` varchar(255) NOT NULL DEFAULT '',
-                `link_notes` mediumtext NOT NULL,
-                `link_rss` varchar(255) NOT NULL DEFAULT '',
-                PRIMARY KEY (`link_id`),
-                KEY `link_visible` (`link_visible`)
-            ) ENGINE=InnoDB {$charset_collate}"
-        );
+        // Set the prefix for tenant
+        $tenant_db->set_prefix('wp_');
         
-        // Create all tables
-        foreach ($tables_sql as $table_name => $sql) {
-            if ($mysqli->query($sql)) {
-                NovaRax_Logger::info("Table created: {$table_name}");
-            } else {
-                NovaRax_Logger::error("Failed to create {$table_name}: " . $mysqli->error);
+        $charset_collate = $tenant_db->get_charset_collate();
+        
+        // Create tables manually with proper structure
+        $tables_sql = array();
+        
+        // wp_users table
+        $tables_sql[] = "CREATE TABLE IF NOT EXISTS `wp_users` (
+            `ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            `user_login` varchar(60) NOT NULL DEFAULT '',
+            `user_pass` varchar(255) NOT NULL DEFAULT '',
+            `user_nicename` varchar(50) NOT NULL DEFAULT '',
+            `user_email` varchar(100) NOT NULL DEFAULT '',
+            `user_url` varchar(100) NOT NULL DEFAULT '',
+            `user_registered` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+            `user_activation_key` varchar(255) NOT NULL DEFAULT '',
+            `user_status` int(11) NOT NULL DEFAULT 0,
+            `display_name` varchar(250) NOT NULL DEFAULT '',
+            PRIMARY KEY (`ID`),
+            KEY `user_login_key` (`user_login`),
+            KEY `user_nicename` (`user_nicename`),
+            KEY `user_email` (`user_email`)
+        ) ENGINE=InnoDB {$charset_collate};";
+        
+        // wp_usermeta table
+        $tables_sql[] = "CREATE TABLE IF NOT EXISTS `wp_usermeta` (
+            `umeta_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            `user_id` bigint(20) unsigned NOT NULL DEFAULT 0,
+            `meta_key` varchar(255) DEFAULT NULL,
+            `meta_value` longtext,
+            PRIMARY KEY (`umeta_id`),
+            KEY `user_id` (`user_id`),
+            KEY `meta_key` (`meta_key`(191))
+        ) ENGINE=InnoDB {$charset_collate};";
+        
+        // wp_options table
+        $tables_sql[] = "CREATE TABLE IF NOT EXISTS `wp_options` (
+            `option_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            `option_name` varchar(191) NOT NULL DEFAULT '',
+            `option_value` longtext NOT NULL,
+            `autoload` varchar(20) NOT NULL DEFAULT 'yes',
+            PRIMARY KEY (`option_id`),
+            UNIQUE KEY `option_name` (`option_name`),
+            KEY `autoload` (`autoload`)
+        ) ENGINE=InnoDB {$charset_collate};";
+        
+        // wp_posts table
+        $tables_sql[] = "CREATE TABLE IF NOT EXISTS `wp_posts` (
+            `ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            `post_author` bigint(20) unsigned NOT NULL DEFAULT 0,
+            `post_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+            `post_date_gmt` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+            `post_content` longtext NOT NULL,
+            `post_title` text NOT NULL,
+            `post_excerpt` text NOT NULL,
+            `post_status` varchar(20) NOT NULL DEFAULT 'publish',
+            `comment_status` varchar(20) NOT NULL DEFAULT 'open',
+            `ping_status` varchar(20) NOT NULL DEFAULT 'open',
+            `post_password` varchar(255) NOT NULL DEFAULT '',
+            `post_name` varchar(200) NOT NULL DEFAULT '',
+            `to_ping` text NOT NULL,
+            `pinged` text NOT NULL,
+            `post_modified` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+            `post_modified_gmt` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+            `post_content_filtered` longtext NOT NULL,
+            `post_parent` bigint(20) unsigned NOT NULL DEFAULT 0,
+            `guid` varchar(255) NOT NULL DEFAULT '',
+            `menu_order` int(11) NOT NULL DEFAULT 0,
+            `post_type` varchar(20) NOT NULL DEFAULT 'post',
+            `post_mime_type` varchar(100) NOT NULL DEFAULT '',
+            `comment_count` bigint(20) NOT NULL DEFAULT 0,
+            PRIMARY KEY (`ID`),
+            KEY `post_name` (`post_name`(191)),
+            KEY `type_status_date` (`post_type`,`post_status`,`post_date`,`ID`),
+            KEY `post_parent` (`post_parent`),
+            KEY `post_author` (`post_author`)
+        ) ENGINE=InnoDB {$charset_collate};";
+        
+        // wp_postmeta table
+        $tables_sql[] = "CREATE TABLE IF NOT EXISTS `wp_postmeta` (
+            `meta_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            `post_id` bigint(20) unsigned NOT NULL DEFAULT 0,
+            `meta_key` varchar(255) DEFAULT NULL,
+            `meta_value` longtext,
+            PRIMARY KEY (`meta_id`),
+            KEY `post_id` (`post_id`),
+            KEY `meta_key` (`meta_key`(191))
+        ) ENGINE=InnoDB {$charset_collate};";
+        
+        // wp_comments table
+        $tables_sql[] = "CREATE TABLE IF NOT EXISTS `wp_comments` (
+            `comment_ID` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            `comment_post_ID` bigint(20) unsigned NOT NULL DEFAULT 0,
+            `comment_author` tinytext NOT NULL,
+            `comment_author_email` varchar(100) NOT NULL DEFAULT '',
+            `comment_author_url` varchar(200) NOT NULL DEFAULT '',
+            `comment_author_IP` varchar(100) NOT NULL DEFAULT '',
+            `comment_date` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+            `comment_date_gmt` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+            `comment_content` text NOT NULL,
+            `comment_karma` int(11) NOT NULL DEFAULT 0,
+            `comment_approved` varchar(20) NOT NULL DEFAULT '1',
+            `comment_agent` varchar(255) NOT NULL DEFAULT '',
+            `comment_type` varchar(20) NOT NULL DEFAULT 'comment',
+            `comment_parent` bigint(20) unsigned NOT NULL DEFAULT 0,
+            `user_id` bigint(20) unsigned NOT NULL DEFAULT 0,
+            PRIMARY KEY (`comment_ID`),
+            KEY `comment_post_ID` (`comment_post_ID`),
+            KEY `comment_approved_date_gmt` (`comment_approved`,`comment_date_gmt`),
+            KEY `comment_date_gmt` (`comment_date_gmt`),
+            KEY `comment_parent` (`comment_parent`),
+            KEY `comment_author_email` (`comment_author_email`(10))
+        ) ENGINE=InnoDB {$charset_collate};";
+        
+        // wp_commentmeta table
+        $tables_sql[] = "CREATE TABLE IF NOT EXISTS `wp_commentmeta` (
+            `meta_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            `comment_id` bigint(20) unsigned NOT NULL DEFAULT 0,
+            `meta_key` varchar(255) DEFAULT NULL,
+            `meta_value` longtext,
+            PRIMARY KEY (`meta_id`),
+            KEY `comment_id` (`comment_id`),
+            KEY `meta_key` (`meta_key`(191))
+        ) ENGINE=InnoDB {$charset_collate};";
+        
+        // wp_terms table
+        $tables_sql[] = "CREATE TABLE IF NOT EXISTS `wp_terms` (
+            `term_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            `name` varchar(200) NOT NULL DEFAULT '',
+            `slug` varchar(200) NOT NULL DEFAULT '',
+            `term_group` bigint(10) NOT NULL DEFAULT 0,
+            PRIMARY KEY (`term_id`),
+            KEY `slug` (`slug`(191)),
+            KEY `name` (`name`(191))
+        ) ENGINE=InnoDB {$charset_collate};";
+        
+        // wp_termmeta table
+        $tables_sql[] = "CREATE TABLE IF NOT EXISTS `wp_termmeta` (
+            `meta_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            `term_id` bigint(20) unsigned NOT NULL DEFAULT 0,
+            `meta_key` varchar(255) DEFAULT NULL,
+            `meta_value` longtext,
+            PRIMARY KEY (`meta_id`),
+            KEY `term_id` (`term_id`),
+            KEY `meta_key` (`meta_key`(191))
+        ) ENGINE=InnoDB {$charset_collate};";
+        
+        // wp_term_taxonomy table
+        $tables_sql[] = "CREATE TABLE IF NOT EXISTS `wp_term_taxonomy` (
+            `term_taxonomy_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            `term_id` bigint(20) unsigned NOT NULL DEFAULT 0,
+            `taxonomy` varchar(32) NOT NULL DEFAULT '',
+            `description` longtext NOT NULL,
+            `parent` bigint(20) unsigned NOT NULL DEFAULT 0,
+            `count` bigint(20) NOT NULL DEFAULT 0,
+            PRIMARY KEY (`term_taxonomy_id`),
+            UNIQUE KEY `term_id_taxonomy` (`term_id`,`taxonomy`),
+            KEY `taxonomy` (`taxonomy`)
+        ) ENGINE=InnoDB {$charset_collate};";
+        
+        // wp_term_relationships table
+        $tables_sql[] = "CREATE TABLE IF NOT EXISTS `wp_term_relationships` (
+            `object_id` bigint(20) unsigned NOT NULL DEFAULT 0,
+            `term_taxonomy_id` bigint(20) unsigned NOT NULL DEFAULT 0,
+            `term_order` int(11) NOT NULL DEFAULT 0,
+            PRIMARY KEY (`object_id`,`term_taxonomy_id`),
+            KEY `term_taxonomy_id` (`term_taxonomy_id`)
+        ) ENGINE=InnoDB {$charset_collate};";
+        
+        // wp_links table
+        $tables_sql[] = "CREATE TABLE IF NOT EXISTS `wp_links` (
+            `link_id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            `link_url` varchar(255) NOT NULL DEFAULT '',
+            `link_name` varchar(255) NOT NULL DEFAULT '',
+            `link_image` varchar(255) NOT NULL DEFAULT '',
+            `link_target` varchar(25) NOT NULL DEFAULT '',
+            `link_description` varchar(255) NOT NULL DEFAULT '',
+            `link_visible` varchar(20) NOT NULL DEFAULT 'Y',
+            `link_owner` bigint(20) unsigned NOT NULL DEFAULT 1,
+            `link_rating` int(11) NOT NULL DEFAULT 0,
+            `link_updated` datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+            `link_rel` varchar(255) NOT NULL DEFAULT '',
+            `link_notes` mediumtext NOT NULL,
+            `link_rss` varchar(255) NOT NULL DEFAULT '',
+            PRIMARY KEY (`link_id`),
+            KEY `link_visible` (`link_visible`)
+        ) ENGINE=InnoDB {$charset_collate};";
+        
+        // Execute all table creation queries
+        foreach ($tables_sql as $sql) {
+            $result = $tenant_db->query($sql);
+            if ($result === false) {
+                NovaRax_Logger::warning("Table creation warning: " . $tenant_db->last_error);
             }
         }
         
-        // Now populate the database with data
-        $this->populate_tenant_database_mysqli($mysqli, $database_name);
-        
-        $mysqli->close();
-        
-        NovaRax_Logger::info("WordPress schema imported successfully: {$database_name}");
+        NovaRax_Logger::info("WordPress tables created for: {$database_name}");
         
         return true;
         
     } catch (Exception $e) {
         NovaRax_Logger::error('Schema import failed: ' . $e->getMessage());
-        return false;
-    }
-}
-
-/**
- * Populate tenant database with essential WordPress data
- *
- * @param mysqli $mysqli Database connection
- * @param string $database_name Database name
- * @return bool Success
- */
-private function populate_tenant_database_mysqli($mysqli, $database_name) {
-    try {
-        NovaRax_Logger::info("Populating tenant database: {$database_name}");
-        
-        // Extract tenant username from database name
-        $tenant_username = str_replace('novarax_tenant_', '', $database_name);
-        
-        // Get tenant data from master database
-        global $wpdb;
-        $tenant = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}novarax_tenants WHERE database_name = %s",
-            $database_name
-        ), ARRAY_A);
-        
-        if (!$tenant) {
-            throw new Exception('Tenant record not found in master database');
-        }
-        
-        // Get user data from master
-        $user = get_user_by('id', $tenant['user_id']);
-        if (!$user) {
-            throw new Exception('User not found');
-        }
-        
-        $subdomain = $tenant['subdomain'];
-        $site_url = 'https://' . $subdomain;
-        
-        // 1. Insert WordPress options
-        $options = array(
-            array('siteurl', $site_url),
-            array('home', $site_url),
-            array('blogname', $tenant['account_name']),
-            array('blogdescription', 'A NovaRax Tenant Dashboard'),
-            array('users_can_register', '0'),
-            array('admin_email', !empty($tenant['billing_email']) ? $tenant['billing_email'] : $user->user_email),
-            array('start_of_week', '1'),
-            array('use_balanceTags', '0'),
-            array('use_smilies', '1'),
-            array('require_name_email', '1'),
-            array('comments_notify', '1'),
-            array('posts_per_rss', '10'),
-            array('rss_use_excerpt', '0'),
-            array('default_category', '1'),
-            array('default_comment_status', 'open'),
-            array('default_ping_status', 'open'),
-            array('default_pingback_flag', '0'),
-            array('posts_per_page', '10'),
-            array('date_format', 'F j, Y'),
-            array('time_format', 'g:i a'),
-            array('links_updated_date_format', 'F j, Y g:i a'),
-            array('comment_moderation', '0'),
-            array('moderation_notify', '1'),
-            array('permalink_structure', '/%postname%/'),
-            array('active_plugins', 'a:0:{}'),
-            array('template', 'twentytwentyfour'),
-            array('stylesheet', 'twentytwentyfour'),
-            array('novarax_tenant_id', $tenant['id']),
-            array('novarax_master_url', 'https://app.novarax.ae'),
-            array('timezone_string', 'UTC'),
-        );
-        
-        foreach ($options as $opt) {
-            $name = $mysqli->real_escape_string($opt[0]);
-            $value = $mysqli->real_escape_string($opt[1]);
-            
-            $sql = "INSERT INTO wp_options (option_name, option_value, autoload) 
-                    VALUES ('{$name}', '{$value}', 'yes') 
-                    ON DUPLICATE KEY UPDATE option_value = '{$value}'";
-            
-            $mysqli->query($sql);
-        }
-        
-        NovaRax_Logger::info("WordPress options inserted");
-        
-        // 2. Create tenant user in tenant database
-        $user_login = $mysqli->real_escape_string($user->user_login);
-        $user_pass = $mysqli->real_escape_string($user->user_pass); // Already hashed
-        $user_nicename = $mysqli->real_escape_string($user->user_nicename);
-        $user_email = $mysqli->real_escape_string($user->user_email);
-        $display_name = $mysqli->real_escape_string($user->display_name);
-        
-        $sql = "INSERT INTO wp_users (user_login, user_pass, user_nicename, user_email, user_url, user_registered, user_activation_key, user_status, display_name) 
-                VALUES ('{$user_login}', '{$user_pass}', '{$user_nicename}', '{$user_email}', '', NOW(), '', 0, '{$display_name}')";
-        
-        if (!$mysqli->query($sql)) {
-            throw new Exception('Failed to create user: ' . $mysqli->error);
-        }
-        
-        $new_user_id = $mysqli->insert_id;
-        
-        NovaRax_Logger::info("User created in tenant database: ID {$new_user_id}");
-        
-        // 3. Insert user meta (make them administrator)
-        $capabilities = $mysqli->real_escape_string(serialize(array('administrator' => true)));
-        
-        $user_meta = array(
-            array($new_user_id, 'wp_capabilities', $capabilities),
-            array($new_user_id, 'wp_user_level', '10'),
-            array($new_user_id, 'nickname', $user_login),
-            array($new_user_id, 'first_name', $mysqli->real_escape_string(get_user_meta($user->ID, 'first_name', true))),
-            array($new_user_id, 'last_name', $mysqli->real_escape_string(get_user_meta($user->ID, 'last_name', true))),
-        );
-        
-        foreach ($user_meta as $meta) {
-            $sql = "INSERT INTO wp_usermeta (user_id, meta_key, meta_value) VALUES ({$meta[0]}, '{$meta[1]}', '{$meta[2]}')";
-            $mysqli->query($sql);
-        }
-        
-        NovaRax_Logger::info("User meta inserted");
-        
-        // 4. Create default "Uncategorized" category
-        $mysqli->query("INSERT IGNORE INTO wp_terms (term_id, name, slug, term_group) VALUES (1, 'Uncategorized', 'uncategorized', 0)");
-        $mysqli->query("INSERT IGNORE INTO wp_term_taxonomy (term_taxonomy_id, term_id, taxonomy, description, parent, count) VALUES (1, 1, 'category', '', 0, 0)");
-        
-        NovaRax_Logger::info("Default category created");
-        
-        // 5. Generate and store API key
-        $api_key = wp_generate_password(32, false);
-        $api_key_escaped = $mysqli->real_escape_string($api_key);
-        $mysqli->query("INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('novarax_api_key', '{$api_key_escaped}', 'yes')");
-        
-        NovaRax_Logger::info("API key generated: {$api_key}");
-        
-        NovaRax_Logger::info("Tenant database populated successfully");
-
-
-// 6. Set WordPress database version to prevent upgrade prompts
-global $wp_db_version;
-require_once(ABSPATH . 'wp-includes/version.php');
-
-$mysqli->query("INSERT INTO wp_options (option_name, option_value, autoload) 
-                VALUES ('db_version', '{$wp_db_version}', 'yes')
-                ON DUPLICATE KEY UPDATE option_value = '{$wp_db_version}'");
-
-NovaRax_Logger::info("Database version set: {$wp_db_version}");
-
-// 7. Set admin email verification to bypass
-$future_time = time() + (6 * 30 * 24 * 60 * 60); // 6 months from now
-$mysqli->query("INSERT INTO wp_options (option_name, option_value, autoload) 
-                VALUES ('admin_email_lifespan', '{$future_time}', 'yes')
-                ON DUPLICATE KEY UPDATE option_value = '{$future_time}'");
-
-NovaRax_Logger::info("Admin email verification disabled");
-
-// 8. Set initial WordPress settings
-$initial_settings = array(
-    array('users_can_register', '0'),
-    array('default_role', 'subscriber'),
-    array('show_on_front', 'posts'),
-    array('posts_per_page', '10'),
-    array('comments_per_page', '50'),
-    array('thread_comments', '1'),
-    array('thread_comments_depth', '5'),
-    array('page_comments', '0'),
-    array('comments_notify', '1'),
-    array('moderation_notify', '1'),
-    array('comment_moderation', '0'),
-    array('require_name_email', '1'),
-    array('comment_whitelist', '1'),
-    array('comment_max_links', '2'),
-    array('moderation_keys', ''),
-    array('blacklist_keys', ''),
-    array('show_avatars', '1'),
-    array('avatar_rating', 'G'),
-    array('avatar_default', 'mystery'),
-    array('close_comments_for_old_posts', '0'),
-    array('close_comments_days_old', '14'),
-    array('page_for_posts', '0'),
-    array('page_on_front', '0'),
-    array('default_ping_status', 'open'),
-    array('default_comment_status', 'open'),
-    array('blog_public', '1'),
-    array('default_pingback_flag', '0'),
-);
-
-foreach ($initial_settings as $setting) {
-    $name = $mysqli->real_escape_string($setting[0]);
-    $value = $mysqli->real_escape_string($setting[1]);
-    
-    $mysqli->query("INSERT INTO wp_options (option_name, option_value, autoload) 
-                    VALUES ('{$name}', '{$value}', 'yes')
-                    ON DUPLICATE KEY UPDATE option_value = '{$value}'");
-}
-
-NovaRax_Logger::info("Initial WordPress settings configured");
-
-        return true;
-        
-    } catch (Exception $e) {
-        NovaRax_Logger::error('Database population failed: ' . $e->getMessage());
         return false;
     }
 }

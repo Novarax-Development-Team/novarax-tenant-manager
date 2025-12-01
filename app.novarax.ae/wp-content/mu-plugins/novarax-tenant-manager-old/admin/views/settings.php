@@ -38,7 +38,7 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                     <th scope="row"><?php _e('Default Storage Limit', 'novarax-tenant-manager'); ?></th>
                     <td>
                         <input type="number" name="novarax_tm_tenant_storage_limit" class="small-text" 
-                               value="<?php echo esc_attr(get_option('novarax_tm_tenant_storage_limit', 1073741824) / 1); ?>"> GB
+                               value="<?php echo esc_attr(get_option('novarax_tm_tenant_storage_limit', 5368709120) / 1073741824); ?>"> GB
                         <p class="description"><?php _e('Default storage limit for new tenants', 'novarax-tenant-manager'); ?></p>
                     </td>
                 </tr>
@@ -64,11 +64,11 @@ $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'genera
                 <tr>
                     <th scope="row"><?php _e('Auto Provision', 'novarax-tenant-manager'); ?></th>
                     <td>
-                       <label>
+                        <label>
                             <input type="checkbox" name="novarax_tm_auto_provision" value="1" 
-                                   <?php checked(get_option('novarax_tm_auto_provision', null)); ?>>
+                                   <?php checked(get_option('novarax_tm_auto_provision', true)); ?>>
                             <?php _e('Automatically provision tenants after creation', 'novarax-tenant-manager'); ?>
-                        </label> 
+                        </label>
                     </td>
                 </tr>
             </table>

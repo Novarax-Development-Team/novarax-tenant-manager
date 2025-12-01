@@ -2,14 +2,8 @@
 /**
  * NovaRax Tenant Dashboard - Dynamic wp-config.php
  * 
- * This file dynamically loads database credentials based on the subdomain.
- * REPLACE the entire contents of /var/www/vhosts/novarax.ae/tenant-dashboard/wp-config.php
+ * Save as: /var/www/vhosts/novarax.ae/tenant-dashboard/wp-config.php
  */
-
-// Prevent direct access
-if (!defined('ABSPATH') && !defined('WP_INSTALLING')) {
-    // We're being loaded directly, define ABSPATH
-}
 
 /**
  * Detect subdomain from HTTP_HOST
@@ -17,20 +11,15 @@ if (!defined('ABSPATH') && !defined('WP_INSTALLING')) {
 function novarax_get_subdomain() {
     $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
     
-    // Also check for Nginx passed subdomain
-    if (isset($_SERVER['NOVARAX_SUBDOMAIN'])) {
-        return $_SERVER['NOVARAX_SUBDOMAIN'];
-    }
-    
     // Extract subdomain from host (e.g., elie.app.novarax.ae -> elie)
     $pattern = '/^([a-z0-9-]+)\.app\.novarax\.ae$/i';
     if (preg_match($pattern, $host, $matches)) {
         return strtolower($matches[1]);
     }
     
-    // Fallback: check for subdomain in any format
+    // Fallback: get first part of domain
     $parts = explode('.', $host);
-    if (count($parts) >= 4) { // subdomain.app.novarax.ae = 4 parts
+    if (count($parts) >= 3) {
         return strtolower($parts[0]);
     }
     
@@ -42,14 +31,13 @@ function novarax_get_subdomain() {
  */
 function novarax_get_tenant_credentials($subdomain) {
     // Master database connection details
-    // IMPORTANT: Update these with your actual master database credentials
     $master_db = array(
         'host'     => 'localhost',
         'port'     => 3306,
-        'database' => 'nova_app',  // Your master database name
-        'user'     => 'nova_app147', // Your master database user
-        'password' => 'NsZa@0NPj5O0RKn*', // Your master database password
-        'prefix'   => 'RAX147_'  // Your master table prefix
+        'database' => 'nova_app',      // Your master database
+        'user'     => 'nova_app147',   // Your master DB user
+        'password' => 'NsZa@0NPj5O0RKn*', // Your master DB password
+        'prefix'   => 'RAX147_'        // Your master table prefix
     );
     
     // Connect to master database
@@ -62,16 +50,18 @@ function novarax_get_tenant_credentials($subdomain) {
     );
     
     if ($mysqli->connect_error) {
-        error_log('NovaRax: Failed to connect to master database: ' . $mysqli->connect_error);
+        error_log('NovaRax: Failed to connect to master: ' . $mysqli->connect_error);
         return false;
     }
     
-    // Query tenant information
+    // Build full subdomain
     $full_subdomain = $subdomain . '.app.novarax.ae';
+    
+    // Query tenant by subdomain
     $stmt = $mysqli->prepare(
-        "SELECT t.id, t.tenant_username, t.database_name, t.status, t.metadata 
-         FROM {$master_db['prefix']}novarax_tenants t 
-         WHERE t.subdomain = ? AND t.status = 'active'"
+        "SELECT id, tenant_username, database_name, status, metadata 
+         FROM {$master_db['prefix']}novarax_tenants 
+         WHERE subdomain = ? AND status = 'active' LIMIT 1"
     );
     
     if (!$stmt) {
@@ -89,80 +79,32 @@ function novarax_get_tenant_credentials($subdomain) {
     $mysqli->close();
     
     if (!$tenant) {
-        error_log('NovaRax: No active tenant found for subdomain: ' . $subdomain);
+        error_log('NovaRax: No active tenant found for: ' . $full_subdomain);
         return false;
     }
     
-    // Get database credentials from metadata (encrypted)
-    $metadata = json_decode($tenant['metadata'], true);
+    // Parse metadata to get database credentials
+    $metadata = !empty($tenant['metadata']) ? json_decode($tenant['metadata'], true) : array();
     
-    if (isset($metadata['db_credentials'])) {
-        // Credentials are encrypted - we need to decrypt them
-        // For now, we'll use the standard naming convention
-        $credentials = array(
-            'database' => $tenant['database_name'],
-            'user'     => substr($tenant['database_name'], 0, 16), // MySQL username limit
-            'password' => '', // We need to retrieve this from encrypted storage
-            'tenant_id' => $tenant['id'],
-            'username' => $tenant['tenant_username']
-        );
-        
-        // Try to decrypt credentials if available
-        if (!empty($metadata['db_credentials'])) {
-            $decrypted = novarax_decrypt_credentials($metadata['db_credentials']);
-            if ($decrypted) {
-                $credentials['user'] = $decrypted['username'];
-                $credentials['password'] = $decrypted['password'];
-            }
-        }
-        
-        return $credentials;
+    // Get database username (usually same as database name, truncated to 16 chars)
+    $db_username = isset($metadata['db_username']) ? $metadata['db_username'] : substr($tenant['database_name'], 0, 16);
+    
+    // Get database password from metadata
+    $db_password = isset($metadata['db_password']) ? $metadata['db_password'] : '';
+    
+    if (empty($db_password)) {
+        error_log('NovaRax: No password found in metadata for tenant: ' . $tenant['id']);
+        // This will cause database connection error - we need the password!
+        return false;
     }
     
-    // Fallback: Use naming convention (less secure but works for testing)
     return array(
         'database'  => $tenant['database_name'],
-        'user'      => substr($tenant['database_name'], 0, 16),
-        'password'  => '', // This will fail - needs proper setup
+        'user'      => $db_username,
+        'password'  => $db_password,
         'tenant_id' => $tenant['id'],
         'username'  => $tenant['tenant_username']
     );
-}
-
-/**
- * Simple decryption for stored credentials
- */
-function novarax_decrypt_credentials($encrypted_data) {
-    // Encryption key - MUST match the one in app.novarax.ae wp-config.php
-    $key = defined('NOVARAX_ENCRYPTION_KEY') ? NOVARAX_ENCRYPTION_KEY : 'default-key-change-me';
-    
-    if ($key === 'default-key-change-me') {
-        // Try to read from a shared config file
-        $config_file = '/var/www/vhosts/novarax.ae/novarax-config.php';
-        if (file_exists($config_file)) {
-            include $config_file;
-            $key = defined('NOVARAX_ENCRYPTION_KEY') ? NOVARAX_ENCRYPTION_KEY : $key;
-        }
-    }
-    
-    $cipher_method = 'AES-256-CBC';
-    $data = base64_decode($encrypted_data);
-    
-    if ($data === false) {
-        return false;
-    }
-    
-    $iv_length = openssl_cipher_iv_length($cipher_method);
-    $iv = substr($data, 0, $iv_length);
-    $encrypted = substr($data, $iv_length);
-    
-    $decrypted = openssl_decrypt($encrypted, $cipher_method, $key, 0, $iv);
-    
-    if ($decrypted === false) {
-        return false;
-    }
-    
-    return json_decode($decrypted, true);
 }
 
 /**
@@ -174,24 +116,44 @@ function novarax_show_error($message = 'Tenant not found') {
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Novarax - <?php echo esc_html($message); ?></title>
+        <title>NovaRax - <?php echo htmlspecialchars($message); ?></title>
         <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-                   display: flex; align-items: center; justify-content: center; 
-                   min-height: 100vh; margin: 0; background: #f4f4f4; }
-            .error-box { background: white; padding: 40px; border-radius: 8px; 
-                        box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
-            h1 { color: #dc3232; margin-bottom: 20px; }
-            p { color: #666; margin-bottom: 20px; }
-            a { color: #0073aa; text-decoration: none; }
-            a:hover { text-decoration: underline; }
+            body { 
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+                display: flex; 
+                align-items: center; 
+                justify-content: center; 
+                min-height: 100vh; 
+                margin: 0; 
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            .error-box { 
+                background: white; 
+                padding: 40px; 
+                border-radius: 12px; 
+                box-shadow: 0 10px 40px rgba(0,0,0,0.2); 
+                text-align: center; 
+                max-width: 400px; 
+            }
+            h1 { color: #dc3232; margin: 0 0 20px 0; font-size: 24px; }
+            p { color: #666; margin: 0 0 20px 0; line-height: 1.6; }
+            a { 
+                display: inline-block;
+                padding: 12px 24px;
+                background: #0073aa; 
+                color: white; 
+                text-decoration: none; 
+                border-radius: 6px;
+                transition: background 0.3s;
+            }
+            a:hover { background: #005177; }
         </style>
     </head>
     <body>
         <div class="error-box">
-            <h1>⚠️ <?php echo esc_html($message); ?></h1>
+            <h1>⚠️ <?php echo htmlspecialchars($message); ?></h1>
             <p>The dashboard you're looking for doesn't exist or has been suspended.</p>
-            <p><a href="https://app.novarax.ae">← Return to Novarax Home Page</a></p>
+            <a href="https://app.novarax.ae">← Return to NovaRax</a>
         </div>
     </body>
     </html>
@@ -207,82 +169,89 @@ function novarax_show_error($message = 'Tenant not found') {
 $subdomain = novarax_get_subdomain();
 
 if (!$subdomain) {
-    // Not a tenant subdomain - show error
     novarax_show_error('Invalid URL');
 }
 
-// Get tenant credentials
+// Get tenant credentials from master database
 $tenant_creds = novarax_get_tenant_credentials($subdomain);
 
 if (!$tenant_creds) {
     novarax_show_error('Tenant not found or inactive');
 }
 
+// Check if password is actually set
+if (empty($tenant_creds['password'])) {
+    novarax_show_error('Database credentials not configured');
+}
+
 // ============================================
 // WORDPRESS DATABASE CONFIGURATION
 // ============================================
 
-/** The name of the database for WordPress */
 define('DB_NAME', $tenant_creds['database']);
-
-/** Database username */
 define('DB_USER', $tenant_creds['user']);
-
-/** Database password */
 define('DB_PASSWORD', $tenant_creds['password']);
-
-/** Database hostname */
 define('DB_HOST', 'localhost:3306');
-
-/** Database charset */
 define('DB_CHARSET', 'utf8mb4');
-
-/** Database collate type */
 define('DB_COLLATE', '');
 
-/** Store tenant info for use by plugins */
+// Store tenant info for plugins
 define('NOVARAX_TENANT_ID', $tenant_creds['tenant_id']);
 define('NOVARAX_TENANT_USERNAME', $tenant_creds['username']);
 define('NOVARAX_MASTER_URL', 'https://app.novarax.ae');
+define('NOVARAX_TENANT_MODE', true);
 
 // ============================================
 // AUTHENTICATION KEYS AND SALTS
 // ============================================
-// Generate unique keys for each tenant based on their ID
-$salt_base = 'novarax_' . $tenant_creds['tenant_id'] . '_';
+// IMPORTANT: These MUST match your master wp-config.php for SSO to work!
+// Copy these from: /var/www/vhosts/novarax.ae/app.novarax.ae/wp-config.php
 
-define('AUTH_KEY', 'N98:7#4oT!#5s!McB67H(/)n!b01oWI[CfJq0I7%6f6RE9G*t)[A2U~)8E@#jX6T');
-define('SECURE_AUTH_KEY', '|Pf@Vz)|+83a59V76I8(2+85tiWtLB8Q]%gG&2#xu|yE3js!n4x1hx@&Y4%&ms#&');
-define('LOGGED_IN_KEY', '86pt4S/@]6O39cOsgk9bs7S1(:];U#U%-7!m!A244(_%Ps|2J[q1f!E_f2~VFZyv');
-define('NONCE_KEY', 's05XewZQ[a1W)i60r|0q54Zt4h7!d5vqVwM6iMkj1[6@hv2Z9Z19C3T0M&H1E9Bf');
-define('AUTH_SALT', '9~)j4vs]7@[:EC~IF(p2St5Kv%80~-wTFb3p5GB6Rq19+9%_S)V2]D@NZASC[FtJ');
+define('AUTH_KEY',         'N98:7#4oT!#5s!McB67H(/)n!b01oWI[CfJq0I7%6f6RE9G*t)[A2U~)8E@#jX6T');
+define('SECURE_AUTH_KEY',  '|Pf@Vz)|+83a59V76I8(2+85tiWtLB8Q]%gG&2#xu|yE3js!n4x1hx@&Y4%&ms#&');
+define('LOGGED_IN_KEY',    '86pt4S/@]6O39cOsgk9bs7S1(:];U#U%-7!m!A244(_%Ps|2J[q1f!E_f2~VFZyv');
+define('NONCE_KEY',        's05XewZQ[a1W)i60r|0q54Zt4h7!d5vqVwM6iMkj1[6@hv2Z9Z19C3T0M&H1E9Bf');
+define('AUTH_SALT',        '9~)j4vs]7@[:EC~IF(p2St5Kv%80~-wTFb3p5GB6Rq19+9%_S)V2]D@NZASC[FtJ');
 define('SECURE_AUTH_SALT', 'gWb+(H|]&9UDmRG:r91:@S7@XU_H4VOilq3T!#M:l2-0s%48/65_T6]@I21QHymt');
-define('LOGGED_IN_SALT', ':c7yF0#9uir89-2N/82_7:3Tj[Rc3z086|c68CP]3]60X/]lo[4uqMISY~nJ%ZE|');
-define('NONCE_SALT', 'IjP[bu1WJPl!+z2r)5e1wd2Vo1FH3;Mt&!4@zE&3eRBT:[e|)y38Ur(4YKUxA;5)');
+define('LOGGED_IN_SALT',   ':c7yF0#9uir89-2N/82_7:3Tj[Rc3z086|c68CP]3]60X/]lo[4uqMISY~nJ%ZE|');
+define('NONCE_SALT',       'IjP[bu1WJPl!+z2r)5e1wd2Vo1FH3;Mt&!4@zE&3eRBT:[e|)y38Ur(4YKUxA;5)');
 
 // ============================================
 // WORDPRESS TABLE PREFIX
 // ============================================
-$table_prefix = 'RAX148_';
+// Use same prefix as tenant database tables (default: wp_)
+$table_prefix = 'wp_';
 
 // ============================================
 // WORDPRESS SETTINGS
 // ============================================
-define('WP_DEBUG', true);
+define('WP_DEBUG', false);
 define('WP_DEBUG_LOG', true);
 define('WP_DEBUG_DISPLAY', false);
+define('SCRIPT_DEBUG', false);
 
-// Disable file editing in admin
+// Disable file editing in admin for security
 define('DISALLOW_FILE_EDIT', true);
 
-// Cookie domain for SSO
+// Disable WordPress cron (we use system cron)
+define('DISABLE_WP_CRON', true);
+
+// Cookie settings for SSO across subdomains
 define('COOKIE_DOMAIN', '.app.novarax.ae');
+define('COOKIEPATH', '/');
+define('SITECOOKIEPATH', '/');
+define('ADMIN_COOKIE_PATH', '/');
+
+// Memory limits
+define('WP_MEMORY_LIMIT', '256M');
+define('WP_MAX_MEMORY_LIMIT', '512M');
 
 // ============================================
-// ABSPATH AND WORDPRESS BOOTSTRAP
+// ABSPATH
 // ============================================
 if (!defined('ABSPATH')) {
     define('ABSPATH', __DIR__ . '/');
 }
 
+/** Sets up WordPress vars and included files. */
 require_once ABSPATH . 'wp-settings.php';

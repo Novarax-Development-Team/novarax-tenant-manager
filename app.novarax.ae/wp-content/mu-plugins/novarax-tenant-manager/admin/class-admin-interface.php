@@ -43,16 +43,27 @@ class NovaRax_Admin_Interface {
         
         // Register AJAX handlers
         $this->register_ajax_handlers();
+
+        // NEW: Initialize AJAX handlers
+    $this->init_ajax_handlers();
+
     }
     
+/**
+ * Initialize AJAX handlers
+ */
+private function init_ajax_handlers() {
+    add_action('wp_ajax_novarax_toggle_ui_mode', array($this, 'ajax_toggle_ui_mode'));
+} 
+
     /**
      * Register admin menu
      */
     public function register_admin_menu() {
         // Main menu
         add_menu_page(
-            __('NovaRax Tenants', 'novarax-tenant-manager'),
-            __('NovaRax', 'novarax-tenant-manager'),
+            __('Novarax Tenants', 'novarax-tenant-manager'),
+            __('Novarax', 'novarax-tenant-manager'),
             'manage_options',
             $this->menu_slug,
             array($this, 'render_dashboard_page'),
@@ -215,7 +226,30 @@ class NovaRax_Admin_Interface {
             NOVARAX_TM_PLUGIN_URL . 'assets/css/admin.css',
             array(),
             NOVARAX_TM_VERSION
+        );  
+
+    // Enqueue UI toggle styles for tenant list
+    if (isset($_GET['page']) && $_GET['page'] === 'novarax-tenants-list') {
+        wp_enqueue_style(
+            'novarax-tm-ui-toggle',
+            NOVARAX_TM_PLUGIN_URL . 'assets/css/novarax-ui-toggle.css',
+            array('novarax-tm-admin'),
+            NOVARAX_TM_VERSION
         );
+        
+        // Check user preference
+        $current_ui = get_user_meta(get_current_user_id(), 'novarax_ui_mode', true);
+        $is_modern = ($current_ui === 'modern' || $current_ui === ''); // Default to modern
+        
+        if ($is_modern) {
+            wp_enqueue_style(
+                'novarax-tm-tenant-list-modern',
+                NOVARAX_TM_PLUGIN_URL . 'assets/css/novarax-tenant-list-modern.css',
+                array('novarax-tm-admin', 'novarax-tm-ui-toggle'),
+                NOVARAX_TM_VERSION
+            );
+        }
+    } 
         
         // Enqueue admin JavaScript
         wp_enqueue_script(
@@ -225,6 +259,14 @@ class NovaRax_Admin_Interface {
             NOVARAX_TM_VERSION,
             true
         );
+
+
+ // NEW: Localize script for AJAX
+    wp_localize_script('novarax-tm-admin', 'novaraxAdmin', array(
+        'ajaxurl' => admin_url('admin-ajax.php'),
+        'nonce' => wp_create_nonce('novarax_ui_toggle'),
+    ));
+    
         
         // Enqueue tenant form JavaScript
         if (strpos($hook, 'add') !== false || strpos($hook, 'edit') !== false) {
@@ -548,6 +590,7 @@ class NovaRax_Admin_Interface {
     public function render_tenants_list_page() {
         include NOVARAX_TM_PLUGIN_DIR . 'admin/views/tenant-list.php';
     }
+
     
     /**
      * Render add tenant page
@@ -600,4 +643,26 @@ class NovaRax_Admin_Interface {
     public function render_settings_page() {
         include NOVARAX_TM_PLUGIN_DIR . 'admin/views/settings.php';
     }
+
+/**
+ * AJAX handler for UI mode toggle
+ */
+public function ajax_toggle_ui_mode() {
+    check_ajax_referer('novarax_ui_toggle', 'nonce');
+    
+    $mode = sanitize_text_field($_POST['mode']);
+    
+    if (!in_array($mode, array('classic', 'modern'))) {
+        wp_send_json_error(array('message' => 'Invalid mode'));
+    }
+    
+    update_user_meta(get_current_user_id(), 'novarax_ui_mode', $mode);
+    
+    wp_send_json_success(array(
+        'mode' => $mode,
+        'message' => sprintf(__('Switched to %s view', 'novarax-tenant-manager'), ucfirst($mode))
+    ));
+}
+
+
 }

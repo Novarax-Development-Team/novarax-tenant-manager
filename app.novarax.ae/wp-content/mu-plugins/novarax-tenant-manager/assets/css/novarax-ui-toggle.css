@@ -1,0 +1,456 @@
+/**
+ * NovaRax UI Toggle Button Styles
+ * 
+ * Beautiful animated toggle switch for switching between Classic and Modern UI
+ * File: /wp-content/mu-plugins/novarax-tenant-manager/assets/css/novarax-ui-toggle.css
+ */
+
+/* ============================================
+   HEADER BAR LAYOUT
+   ============================================ */
+
+.novarax-header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0px;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 16px 0;
+}
+
+.novarax-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.novarax-header-right {
+    display: flex;
+    align-items: center;
+}
+
+/* ============================================
+   UI TOGGLE CONTAINER
+   ============================================ */
+
+.novarax-ui-toggle-container {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #ffffff;
+    padding: 10px 20px;
+    border-radius: 50px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border: 2px solid #e2e8f0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+}
+
+.novarax-ui-toggle-container:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+    transform: translateY(-1px);
+}
+
+/* ============================================
+   TOGGLE LABELS
+   ============================================ */
+
+.novarax-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #94a3b8;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    user-select: none;
+    cursor: pointer;
+}
+
+.novarax-toggle-label .dashicons {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    transition: transform 0.3s ease;
+}
+
+.novarax-toggle-label:hover .dashicons {
+    transform: scale(1.1);
+}
+
+/* Label colors based on toggle state */
+#novarax-ui-toggle:checked ~ .novarax-toggle-label-active {
+    color: #667eea;
+}
+
+#novarax-ui-toggle:checked ~ .novarax-toggle-label-active .dashicons {
+    color: #667eea;
+}
+
+#novarax-ui-toggle:not(:checked) ~ .novarax-toggle-label:first-of-type {
+    color: #667eea;
+}
+
+#novarax-ui-toggle:not(:checked) ~ .novarax-toggle-label:first-of-type .dashicons {
+    color: #667eea;
+}
+
+/* ============================================
+   TOGGLE SWITCH
+   ============================================ */
+
+.novarax-toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 56px;
+    height: 30px;
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.novarax-toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+/* ============================================
+   SLIDER TRACK
+   ============================================ */
+
+.novarax-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, #cbd5e1 0%, #94a3b8 100%);
+    border-radius: 50px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Slider Button */
+.novarax-toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 24px;
+    width: 24px;
+    left: 3px;
+    bottom: 3px;
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    border-radius: 50%;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 
+        0 2px 8px rgba(0, 0, 0, 0.15),
+        0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* ============================================
+   CHECKED STATE (MODERN UI ACTIVE)
+   ============================================ */
+
+input:checked + .novarax-toggle-slider {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    box-shadow: 
+        inset 0 2px 4px rgba(0, 0, 0, 0.15),
+        0 0 0 0 rgba(102, 126, 234, 0.2);
+}
+
+input:checked + .novarax-toggle-slider:before {
+    transform: translateX(26px);
+    background: linear-gradient(135deg, #ffffff 0%, #fef3c7 100%);
+    box-shadow: 
+        0 3px 12px rgba(102, 126, 234, 0.4),
+        0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* ============================================
+   HOVER EFFECTS
+   ============================================ */
+
+.novarax-toggle-switch:hover .novarax-toggle-slider {
+    box-shadow: 
+        inset 0 2px 4px rgba(0, 0, 0, 0.15), 
+        0 0 0 4px rgba(102, 126, 234, 0.1);
+}
+
+input:checked + .novarax-toggle-slider:hover {
+    background: linear-gradient(135deg, #7c93f5 0%, #8b5fc9 100%);
+    box-shadow: 
+        inset 0 2px 4px rgba(0, 0, 0, 0.15), 
+        0 0 0 4px rgba(102, 126, 234, 0.15);
+}
+
+.novarax-toggle-slider:hover:before {
+    transform: scale(1.05);
+}
+
+input:checked + .novarax-toggle-slider:hover:before {
+    transform: translateX(26px) scale(1.05);
+}
+
+/* ============================================
+   FOCUS STATE (ACCESSIBILITY)
+   ============================================ */
+
+input:focus + .novarax-toggle-slider {
+    box-shadow: 
+        inset 0 2px 4px rgba(0, 0, 0, 0.15),
+        0 0 0 4px rgba(102, 126, 234, 0.25);
+}
+
+input:focus:not(:focus-visible) + .novarax-toggle-slider {
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* ============================================
+   LOADING STATE
+   ============================================ */
+
+.novarax-ui-toggle-container.loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+/* Remove spinner, we'll use top progress bar instead */
+.novarax-ui-toggle-container.loading::after {
+    display: none;
+}
+
+/* ============================================
+   TOP PROGRESS BAR
+   ============================================ */
+
+.novarax-loading-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: #e5e7eb;
+    z-index: 999999;
+    overflow: hidden;
+    display: none;
+}
+
+.novarax-loading-bar.active {
+    display: block;
+}
+
+.novarax-loading-bar-progress {
+    height: 100%;
+    background: linear-gradient(90deg, 
+        #4b5563 0%, 
+        #6b7280 50%, 
+        #4b5563 100%
+    );
+    background-size: 200% 100%;
+    width: 0%;
+    transition: width 0.3s ease;
+    animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* When loading starts, animate to 70% */
+.novarax-loading-bar.active .novarax-loading-bar-progress {
+    width: 70%;
+    transition: width 3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* When loading completes, jump to 100% quickly */
+.novarax-loading-bar.complete .novarax-loading-bar-progress {
+    width: 100%;
+    transition: width 0.3s ease;
+}
+
+/* Fade out after completion */
+.novarax-loading-bar.fadeout {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+/* ============================================
+   ACTIVE/PRESSED STATE
+   ============================================ */
+
+.novarax-toggle-switch:active .novarax-toggle-slider:before {
+    width: 28px;
+}
+
+input:checked + .novarax-toggle-slider:active:before {
+    transform: translateX(22px);
+}
+
+/* ============================================
+   DISABLED STATE
+   ============================================ */
+
+.novarax-toggle-switch input:disabled + .novarax-toggle-slider {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.novarax-toggle-switch input:disabled ~ .novarax-toggle-label {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ============================================
+   TOOLTIP/HINT (OPTIONAL)
+   ============================================ */
+
+.novarax-toggle-label[data-tooltip] {
+    position: relative;
+}
+
+.novarax-toggle-label[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: -35px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a202c;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+    opacity: 0;
+    animation: fadeIn 0.2s ease-in forwards;
+}
+
+@keyframes fadeIn {
+    to {
+        opacity: 1;
+    }
+}
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+
+@media (max-width: 782px) {
+    .novarax-header-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+    
+    .novarax-header-right {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .novarax-ui-toggle-container {
+        width: 100%;
+        justify-content: center;
+        padding: 12px 24px;
+    }
+    
+    .novarax-toggle-label {
+        font-size: 14px;
+    }
+    
+    .novarax-toggle-switch {
+        width: 60px;
+        height: 32px;
+    }
+    
+    .novarax-toggle-slider:before {
+        height: 26px;
+        width: 26px;
+    }
+    
+    input:checked + .novarax-toggle-slider:before {
+        transform: translateX(28px);
+    }
+}
+
+@media (max-width: 600px) {
+    .novarax-header-left {
+        width: 100%;
+    }
+    
+    .wp-heading-inline {
+        font-size: 24px;
+    }
+    
+    .page-title-action {
+        font-size: 13px;
+        padding: 10px 20px;
+    }
+}
+
+/* ============================================
+   DARK MODE SUPPORT (OPTIONAL)
+   ============================================ */
+
+@media (prefers-color-scheme: dark) {
+    .novarax-ui-toggle-container {
+        background: #2d3748;
+        border-color: #4a5568;
+    }
+    
+    .novarax-ui-toggle-container:hover {
+        border-color: #718096;
+    }
+    
+    .novarax-toggle-label {
+        color: #a0aec0;
+    }
+}
+
+/* ============================================
+   ANIMATION ENHANCEMENTS
+   ============================================ */
+
+/* Pulse effect on page load */
+@keyframes pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(102, 126, 234, 0);
+    }
+}
+
+.novarax-ui-toggle-container.highlight {
+    animation: pulse 2s ease-in-out;
+}
+
+/* Smooth color transition */
+.novarax-toggle-slider,
+.novarax-toggle-slider:before {
+    transition: 
+        all 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+        background 0.3s ease;
+}
+
+/* ============================================
+   SUCCESS NOTIFICATION STYLE
+   ============================================ */
+
+.notice.novarax-toggle-notice {
+    border-left-color: #667eea;
+    background: #f0f4ff;
+}
+
+.notice.novarax-toggle-notice p {
+    color: #4c51bf;
+    font-weight: 500;
+}

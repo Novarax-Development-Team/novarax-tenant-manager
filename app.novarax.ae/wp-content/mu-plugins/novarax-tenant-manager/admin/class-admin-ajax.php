@@ -60,6 +60,11 @@ public function __construct() {
     
     // Analytics
     add_action('wp_ajax_novarax_get_analytics_data', array($this, 'get_analytics_data'));
+
+//Storage Calculator
+add_action('wp_ajax_novarax_recalculate_storage', array($this, 'recalculate_storage'));
+add_action('wp_ajax_novarax_recalculate_all_storage', array($this, 'recalculate_all_storage'));
+
 }
 
 /**
@@ -563,6 +568,75 @@ private function get_recent_activity($limit = 10) {
         ));
     }
     
+/**
+ * Recalculate tenant storage
+ */
+public function recalculate_storage() {
+    NovaRax_Security::check_ajax_nonce();
+    
+    if (!isset($_POST['tenant_id'])) {
+        wp_send_json_error(array(
+            'message' => __('Tenant ID is required', 'novarax-tenant-manager'),
+        ));
+    }
+    
+    $tenant_id = absint($_POST['tenant_id']);
+    
+    // Check if tenant exists
+    $tenant_ops = new NovaRax_Tenant_Operations();
+    $tenant = $tenant_ops->get_tenant($tenant_id);
+    
+    if (!$tenant) {
+        wp_send_json_error(array(
+            'message' => __('Tenant not found', 'novarax-tenant-manager'),
+        ));
+    }
+    
+    // Calculate storage
+    $calculator = new NovaRax_Storage_Calculator();
+    $result = $calculator->force_recalculate($tenant_id);
+    
+    if ($result['success']) {
+        // Get updated tenant data
+        $tenant = $tenant_ops->get_tenant($tenant_id);
+        
+        $percentage = $tenant->storage_limit > 0 
+            ? round(($tenant->storage_used / $tenant->storage_limit) * 100, 2)
+            : 0;
+        
+        wp_send_json_success(array(
+            'message' => __('Storage recalculated successfully', 'novarax-tenant-manager'),
+            'storage_used' => $tenant->storage_used,
+            'storage_used_formatted' => size_format($tenant->storage_used, 2),
+            'storage_limit_formatted' => size_format($tenant->storage_limit, 2),
+            'percentage' => $percentage,
+        ));
+    } else {
+        wp_send_json_error(array(
+            'message' => $result['message'],
+        ));
+    }
+}
+
+/**
+ * Recalculate all tenants storage
+ */
+public function recalculate_all_storage() {
+    NovaRax_Security::check_ajax_nonce();
+    
+    // This could take a while
+    set_time_limit(300);
+    
+    $calculator = new NovaRax_Storage_Calculator();
+    $calculator->calculate_all_tenants_storage();
+    
+    wp_send_json_success(array(
+        'message' => __('Storage recalculated for all tenants', 'novarax-tenant-manager'),
+    ));
+} 
+
+
+
     /**
      * Get dashboard statistics
      */

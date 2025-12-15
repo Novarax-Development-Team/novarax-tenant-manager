@@ -8,6 +8,32 @@
     margin: 20px 0;
 }
 
+div.novarax-header-left a.page-title-action{
+margin-top:15px !important;}
+
+.page-title-action {
+    background: linear-gradient(135deg, #353132 0%, #3D393A 100%) !important;
+    color: #fff !important;
+    padding: 3px 17px !important;
+    border-radius: 50px !important;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: none;
+    display: inline-block;
+    text-transform: none;
+}
+
+.page-title-action:hover {
+    transform: translateY(-2px);
+    color: #fff !important;
+}
+
+.page-title-action:active {
+    transform: translateY(0);
+}
+
 .novarax-stat-card {
     background: #fff;
     border: 1px solid #c3c4c7;
@@ -101,12 +127,13 @@
 /* Status Badges */
 .novarax-status-badge {
     display: inline-block;
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 600;
+    padding: 3px 12px;
+    border-radius: 50px;
+    font-size: 11px;
+    font-weight: 400;
     color: #fff;
     text-transform: uppercase;
+line-height: 1.45;
 }
 
 .novarax-status-active { background: #46b450; }

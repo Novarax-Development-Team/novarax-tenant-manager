@@ -1,0 +1,775 @@
+/**
+ * NovaRax Tenant List - Modern UI/UX Redesign (Fixed)
+ * 
+ * File: /wp-content/mu-plugins/novarax-tenant-manager/assets/css/novarax-tenant-list-modern.css
+ * 
+ * This CSS file modernizes the tenant list page with a proper card-based layout
+ */
+
+/* ============================================
+   GENERAL RESETS & CONTAINER
+   ============================================ */
+
+/* Ensure proper box sizing */
+* {
+    box-sizing: border-box;
+}
+
+/* Main container styling */
+body.wp-admin {
+    background: #f5f7fa;
+}
+
+.wrap {
+    max-width: 100%;
+}
+
+/* ============================================
+   HEADER SECTION
+   ============================================ */
+
+.wp-heading-inline {
+    font-size: 32px;
+    font-weight: 700;
+    color: #1a202c;
+    margin-bottom: 24px;
+}
+
+.page-title-action {
+    background: linear-gradient(135deg, #353132 0%, #3D393A 100%);
+    color: #fff !important;
+    padding: 3px 17px!important;
+    border-radius: 50px !important;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: none;
+    display: inline-block;
+    text-transform: none;
+}
+
+.page-title-action:hover {
+    transform: translateY(-2px);
+    color: #fff !important;
+}
+
+.page-title-action:active {
+    transform: translateY(0);
+}
+
+.wp-header-end {
+    margin-bottom: 32px;
+    border: none;
+}
+
+/* ============================================
+   STATUS FILTER TABS (IMPROVED)
+   ============================================ */
+
+.subsubsub {
+    margin: 0 0 24px 0;
+    padding: 0;
+   /*float: none; */
+    display: flex;
+    gap: 8px;
+    background: #fff;
+    padding: 5px;
+    border-radius: 50px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    flex-wrap: wrap;
+width:auto !important;
+}
+
+.subsubsub li {
+    margin: 0;
+    padding: 0;
+}
+
+.subsubsub li::after {
+    content: none;
+}
+
+.subsubsub li a {
+    color: #64748b;
+    text-decoration: none;
+    padding: 4px 17px;
+    border-radius: 50px;
+    display: inline-block;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.subsubsub li a:hover {
+    background: #f1f5f9;
+    color: #334155;
+}
+
+.subsubsub li a.current {
+    background: linear-gradient(135deg, #353132 0%, #3D393A 100%);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.subsubsub .count {
+    background: rgba(100, 116, 139, 0.15);
+    padding: 3px 8px;
+    border-radius: 50px;
+    font-size: 12px;
+    font-weight: 700;
+    margin-left: 6px;
+}
+
+.subsubsub li a.current .count {
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
+}
+
+/* ============================================
+   SEARCH & ACTIONS BAR
+   ============================================ */
+
+.tablenav {
+    margin: 0 0 20px 0;
+    padding: 0;
+    clear: both;
+    height: auto;
+}
+
+.tablenav.top {
+    background: #fff;
+  padding: 10px 10px;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.tablenav.top .actions {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.tablenav .tablenav-pages {
+    float: right;
+    margin: 0 0 0px !important;
+}
+
+.tablenav select {
+    min-width: 180px;
+    padding: 2px 9px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #334155;
+    background: #fff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.tablenav select:focus {
+    border-color: #353132;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.tablenav .button {
+    background: #fff;
+    border: 2px solid #e2e8f0;
+    color: #334155;
+    padding: 6px 13px;
+    border-radius: 50px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    height: auto;
+    line-height: 1.4;
+}
+
+.tablenav .button:hover {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+    color: #1e293b;
+}
+
+.tablenav .button .dashicons {
+    margin-right: 4px;
+}
+
+.search-box {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.search-box input[type="search"] {
+    padding: 10px 14px;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 14px;
+    min-width: 250px;
+    transition: all 0.2s ease;
+}
+
+.search-box input[type="search"]:focus {
+    border-color: #353132;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.search-box .button {
+    padding: 10px 20px;
+}
+
+/* Item count */
+.displaying-num {
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 500;
+padding: 0px 15px
+}
+
+/* Force flex layout for the top tablenav bar */
+.tablenav.top {
+    display: flex !important;
+    align-items: center;
+    justify-content: flex-start;   /* we’ll control spacing manually */
+    flex-wrap: nowrap;             /* keep everything on one line */
+    gap: 12px;
+}
+
+/* Left sections: stop them from floating in old WP CSS */
+.tablenav.top .alignleft.actions,
+.tablenav.top .alignleft.bulkactions {
+    float: none !important;
+}
+
+/* Right section: push it to the far right */
+.tablenav.top .tablenav-pages {
+    float: none !important;        /* override WP default */
+    margin-left: auto !important;  /* pushes it to the far right */
+    display: flex;
+    align-items: center;
+}
+
+/* Hide the old clear <br> that breaks flex alignment */
+.tablenav.top br.clear {
+    display: none !important;
+}
+
+
+
+/* ============================================
+   HIDE OLD TABLE, SHOW CARD GRID
+   ============================================ */
+
+/* Hide the traditional table header */
+.wp-list-table thead,
+.wp-list-table tfoot {
+    display: none;
+}
+
+/* Make table body a grid */
+.wp-list-table {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
+.wp-list-table tbody {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 24px;
+    background: transparent;
+}
+
+/* ============================================
+   TENANT CARDS
+   ============================================ */
+
+.comment-ays, .feature-filter, .popular-tags, .stuffbox, .widgets-holder-wrap, .wp-editor-container, p.popular-tags, table.widefat {
+	background: rgba(0,0,0,0) !important;}
+
+#menu-management .menu-edit, #menu-settings-column .accordion-container, .comment-ays, .feature-filter, .manage-menus, .menu-item-handle, .popular-tags, .stuffbox, .widget-inside, .widget-top, .widgets-holder-wrap, .wp-editor-container, p.popular-tags, table.widefat {
+    border: 0px solid #c3c4c7;
+    box-shadow: 0 0px 0px rgba(0,0,0,.04);
+}
+
+.alternate, .striped>tbody>:nth-child(odd), ul.striped>:nth-child(odd) {
+    background-color: #ffffff;}
+
+
+.wp-list-table tbody tr {
+    display: block;
+    background: #fff;
+    border: 2px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 24px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.wp-list-table tbody tr:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+    border-color: #353132;
+}
+
+.wp-list-table tbody tr.alternate {
+    background: #fff;
+}
+
+/* Checkbox */
+.wp-list-table tbody tr th.check-column {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    padding: 0;
+    width: auto;
+    display: block;
+}
+
+.wp-list-table tbody tr th.check-column input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    cursor: pointer;
+}
+
+/* Make all columns display as blocks */
+.wp-list-table tbody tr td,
+.wp-list-table tbody tr th {
+    display: block;
+    padding: 0;
+    border: none;
+    background: transparent;
+}
+
+/* Account Name - Main heading */
+.wp-list-table tbody tr .column-account_name {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1a202c;
+    margin: 0 0 16px 0;
+    padding-left: 40px;
+}
+
+.wp-list-table tbody tr .column-account_name a {
+    color: #1a202c;
+    text-decoration: none;
+}
+
+.wp-list-table tbody tr .column-account_name a:hover {
+    color: #353132;
+}
+
+/* Row actions under account name */
+.wp-list-table tbody tr .column-account_name .row-actions {
+    margin-top: 8px;
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.wp-list-table tbody tr .column-account_name .row-actions span {
+    margin: 0;
+}
+
+.wp-list-table tbody tr .column-account_name .row-actions a {
+    color: #353132;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.wp-list-table tbody tr .column-account_name .row-actions a:hover {
+    color: #3D393A;
+}
+
+.wp-list-table tbody tr .column-account_name .row-actions .delete a {
+    color: #ef4444;
+}
+
+.wp-list-table tbody tr .column-account_name .row-actions .delete a:hover {
+    color: #dc2626;
+}
+
+/* Info Grid */
+.wp-list-table tbody tr .column-tenant_username,
+.wp-list-table tbody tr .column-subdomain,
+.wp-list-table tbody tr .column-company_name,
+.wp-list-table tbody tr .column-billing_email {
+    padding: 12px 0;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 14px;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.wp-list-table tbody tr .column-tenant_username::before,
+.wp-list-table tbody tr .column-subdomain::before,
+.wp-list-table tbody tr .column-company_name::before,
+.wp-list-table tbody tr .column-billing_email::before {
+    font-family: dashicons;
+    font-size: 20px;
+    color: #94a3b8;
+    width: 24px;
+    display: inline-block;
+    text-align: center;
+}
+
+.wp-list-table tbody tr .column-tenant_username::before {
+    content: "\f110";
+}
+
+.wp-list-table tbody tr .column-subdomain::before {
+    content: "\f103";
+}
+
+.wp-list-table tbody tr .column-company_name::before {
+    content: "\f323";
+}
+
+.wp-list-table tbody tr .column-billing_email::before {
+    content: "\f466";
+}
+
+.wp-list-table tbody tr .column-subdomain a {
+    color: #353132;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.wp-list-table tbody tr .column-subdomain a:hover {
+    color: #3D393A;
+}
+
+.wp-list-table tbody tr .column-subdomain a .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    vertical-align: middle;
+}
+
+.wp-list-table tbody tr .column-billing_email a {
+    color: #475569;
+    text-decoration: none;
+}
+
+.wp-list-table tbody tr .column-billing_email a:hover {
+    color: #1e293b;
+}
+
+/* Status Badge */
+.wp-list-table tbody tr .column-status {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    padding: 0;
+    border: none;
+}
+
+.wp-list-table tbody tr .column-status .novarax-status-badge {
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-block;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Storage Section */
+.wp-list-table tbody tr .column-storage_used {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 2px solid #f1f5f9;
+    border-bottom: none;
+}
+
+.wp-list-table tbody tr .column-storage_used::before {
+    content: "\f316";
+    font-family: dashicons;
+    font-size: 18px;
+    color: #94a3b8;
+    margin-right: 8px;
+}
+
+.novarax-storage-bar {
+    width: 100%;
+    height: 8px;
+    background: #f1f5f9;
+    border-radius: 20px;
+    overflow: hidden;
+    margin: 8px 0;
+}
+
+.novarax-storage-bar-fill {
+    height: 100%;
+    border-radius: 20px;
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wp-list-table tbody tr .column-storage_used small {
+    display: block;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 4px;
+}
+
+/* Created Date */
+.wp-list-table tbody tr .column-created_at {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #f1f5f9;
+    font-size: 13px;
+    color: #94a3b8;
+    border-bottom: none;
+}
+
+.wp-list-table tbody tr .column-created_at::before {
+    content: "\f145";
+    font-family: dashicons;
+    font-size: 16px;
+    margin-right: 6px;
+}
+
+.wp-list-table tbody tr .column-created_at small {
+    color: #cbd5e1;
+    margin-left: 8px;
+}
+
+/* ============================================
+   PAGINATION
+   ============================================ */
+
+.tablenav.bottom {
+    background: #fff;
+    padding: 16px 20px;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-top: 24px;
+}
+
+.tablenav-pages {
+    margin: 0;
+}
+
+.tablenav-pages .pagination-links a,
+.tablenav-pages .pagination-links span.current {
+    padding: 8px 14px;
+    margin: 0 4px;
+    border-radius: 8px;
+    border: 2px solid #e2e8f0;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    background: #fff;
+}
+
+.tablenav-pages .pagination-links a:hover {
+    border-color: #353132;
+    background: #f8f9ff;
+}
+
+.tablenav-pages .pagination-links span.current {
+    background: linear-gradient(135deg, #353132 0%, #3D393A 100%);
+    color: #fff;
+    border-color: transparent;
+    font-weight: 600;
+}
+
+/* ============================================
+   EMPTY STATE
+   ============================================ */
+
+.wp-list-table .no-items {
+    display: block;
+    text-align: center;
+    padding: 80px 20px;
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    grid-column: 1 / -1;
+}
+
+.wp-list-table .no-items::before {
+    content: "\f110";
+    font-family: dashicons;
+    font-size: 64px;
+    color: #cbd5e1;
+    display: block;
+    margin-bottom: 16px;
+}
+
+
+
+/* ============================================
+   Checkboxes
+   ============================================ */
+
+.page-title-action, .wrap .page-title-action:active {
+    border: 0px solid #5e5e5e !important;
+    color: #fff !important;
+    background: linear-gradient(135deg, #353132 0%, #3D393A 100%) !important;
+}
+
+.search-box input[type="search"] {
+    padding: 8px 18px;
+    border: 2px solid #e2e8f0;
+    font-size: 14px;
+    min-width: 300px;
+    margin-right: -80px !important;
+    border-radius: 50px !important;
+    transition: all 0.2s ease;
+}
+
+input#search-submit.button{
+ border: 0px solid #5e5e5e !important;
+ border-radius:50px !important;
+    color: #fff !important;
+    background: linear-gradient(135deg, #353132 0%, #3D393A 100%) !important;
+}
+
+/* Positioning container – you already have this but keep it */
+.wp-list-table tbody tr th.check-column {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    padding: 0;
+}
+
+/* Base fancy checkbox */
+.wp-list-table tbody tr th.check-column input,
+.wp-list-table tbody tr th.check-column input[type="checkbox"],
+.wp-list-table tbody tr th.check-column input[type="Checkbox"] {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    width: 22px !important;
+    height: 22px !important;
+    border: 2px solid #d1d5db !important;   /* light grey */
+    border-radius: 50px !important;          /* rounded corners */
+    background: #fff !important;
+    display: inline-flex !important;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Hover state */
+.wp-list-table tbody tr th.check-column input:hover {
+    border-color: #9ca3af !important;
+}
+
+/* Checked state background */
+.wp-list-table tbody tr th.check-column input:checked {
+    background-color: #353132 !important;   /* your dark color */
+    border-color: #353132 !important;
+}
+
+
+/* ============================================
+   RESPONSIVE DESIGN
+   ============================================ */
+
+@media (max-width: 1400px) {
+    .wp-list-table tbody {
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    }
+}
+@media (min-width: 1400px) {
+    .wp-list-table tbody {
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 24px !important;
+    }
+}
+
+/* Reduce minimum card width so grid can actually fit 4 */
+.wp-list-table tbody tr {
+    min-width: 0 !important;
+} 
+
+
+
+@media (max-width: 1024px) {
+    .wp-list-table tbody {
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        gap: 20px;
+    }
+}
+
+@media (max-width: 782px) {
+    .wp-list-table tbody {
+        grid-template-columns: 1fr;
+    }
+    
+    .subsubsub {
+        flex-direction: column;
+    }
+    
+    .tablenav.top {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .tablenav.top .actions {
+        width: 100%;
+        flex-direction: column;
+    }
+    
+    .tablenav.top .actions > * {
+        width: 100%;
+    }
+    
+    .search-box {
+        width: 100%;
+        flex-direction: column;
+    }
+    
+    .search-box input[type="search"] {
+        width: 100%;
+    }
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.wp-list-table tbody tr {
+    animation: fadeInUp 0.4s ease-out backwards;
+}
+
+.wp-list-table tbody tr:nth-child(1) { animation-delay: 0.05s; }
+$wp-list-table tbody tr:nth-child(2) { animation-delay: 0.1s; }
+$wp-list-table tbody tr:nth-child(3) { animation-delay: 0.15s; }
+$wp-list-table tbody tr:nth-child(4) { animation-delay: 0.2s; }
+$wp-list-table tbody tr:nth-child(5) { animation-delay: 0.25s; }
+$wp-list-table tbody tr:nth-child(6) { animation-delay: 0.3s; }

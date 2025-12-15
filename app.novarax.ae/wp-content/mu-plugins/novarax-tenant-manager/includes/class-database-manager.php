@@ -240,20 +240,69 @@ class NovaRax_Database_Manager {
      * @param string $username Database username (optional, will be generated)
      * @return array Result with 'success', 'database', 'username', 'password'
      */
-   public function create_tenant_database($database_name, $username = null) {
+ public function create_tenant_database($database_name, $username = null) {
     try {
+        // ============================================
+        // DEBUG: Show what we receive
+        // ============================================
+        error_log("=== USERNAME GENERATION DEBUG ===");
+        error_log("1. RECEIVED database_name: " . $database_name);
+        
         // Sanitize database name
         $database_name = $this->sanitize_database_name($database_name);
+        error_log("2. AFTER sanitize: " . $database_name);
         
-        // Generate username and password
+        // ================================================================
+        // CRITICAL FIX: Generate UNIQUE username for each tenant
+        // ================================================================
         if (!$username) {
-            $username = substr($database_name, 0, 16);
+            // Get the configured prefix
+            $db_prefix = get_option('novarax_tm_tenant_db_prefix', 'novarax_tenant_');
+            error_log("3. DB PREFIX from options: " . $db_prefix);
+            error_log("4. PREFIX LENGTH: " . strlen($db_prefix));
+            
+            // Check if prefix exists in database name
+            $prefix_found = (strpos($database_name, $db_prefix) === 0);
+            error_log("5. PREFIX FOUND in database_name? " . ($prefix_found ? 'YES' : 'NO'));
+            
+            // Remove the prefix to get the unique part
+            if ($prefix_found) {
+                $unique_part = substr($database_name, strlen($db_prefix));
+                error_log("6. EXTRACTED unique_part: " . $unique_part);
+            } else {
+                // Fallback: use entire database name
+                $unique_part = $database_name;
+                error_log("6. FALLBACK - using entire database_name as unique_part: " . $unique_part);
+            }
+            
+            // Clean the unique part (remove any non-alphanumeric except underscore)
+            $unique_part = preg_replace('/[^a-zA-Z0-9_]/', '', $unique_part);
+            error_log("7. AFTER cleaning unique_part: " . $unique_part);
+            error_log("8. LENGTH of unique_part: " . strlen($unique_part));
+            
+            // Create username: nvx_ + unique_part (max 16 chars for MySQL)
+            // nvx_ = 4 chars, leaves 12 chars for unique identifier
+            $username = 'nvx_' . substr($unique_part, 0, 12);
+            error_log("9. FIRST attempt username: " . $username);
+            
+            // If the unique part is too long or might conflict, use hash
+            if (strlen($unique_part) > 12) {
+                // Use first 6 chars + last 6 chars for better readability
+                $username = 'nvx_' . substr($unique_part, 0, 6) . substr($unique_part, -6);
+                error_log("10. LONG username - using first+last: " . $username);
+            }
         }
-        // Ensure username is max 16 chars (MySQL limit)
+        
+        // Ensure username is max 16 chars and contains only valid characters
         $username = substr(preg_replace('/[^a-zA-Z0-9_]/', '', $username), 0, 16);
+        error_log("11. FINAL username: " . $username);
+        error_log("12. FINAL username length: " . strlen($username));
+        error_log("=================================");
+        
+        NovaRax_Logger::info("Generated MySQL username: {$username} for database: {$database_name}");
         
         // Generate secure password
-        $password = wp_generate_password(24, true, false); // No special chars that might cause issues
+        $password = wp_generate_password(24, false);
         
         // Get connection
         $mysqli = $this->get_mysql_connection();
@@ -275,35 +324,37 @@ class NovaRax_Database_Manager {
         
         NovaRax_Logger::info("Database created: {$database_name}");
         
-        // For Plesk: We might need to create user differently
-        // First, try to drop user if exists (ignore errors)
-        $mysqli->query("DROP USER IF EXISTS '{$username}'@'localhost'");
+        // ================================================================
+        // IMPORTANT: Check if user already exists
+        // Only drop if it exists to avoid errors
+        // ================================================================
+        $escaped_user = $mysqli->real_escape_string($username);
+        
+        $check_user = $mysqli->query("
+            SELECT User FROM mysql.user 
+            WHERE User = '{$escaped_user}' 
+            AND Host = 'localhost'
+        ");
+        
+        if ($check_user && $check_user->num_rows > 0) {
+            NovaRax_Logger::warning("MySQL user {$username} already exists - dropping and recreating");
+            $mysqli->query("DROP USER '{$escaped_user}'@'localhost'");
+        }
         
         // Create user with password
-        // MariaDB/MySQL 5.7+ syntax
-        $sql = "CREATE USER '{$username}'@'localhost' IDENTIFIED BY '{$mysqli->real_escape_string($password)}'";
+        $escaped_pass = $mysqli->real_escape_string($password);
+        
+        $sql = "CREATE USER '{$escaped_user}'@'localhost' IDENTIFIED BY '{$escaped_pass}'";
         
         if (!$mysqli->query($sql)) {
-            // Try alternative syntax for older versions
-            $sql = "CREATE USER '{$username}'@'localhost'";
-            if (!$mysqli->query($sql)) {
-                throw new Exception('Failed to create database user: ' . $mysqli->error);
-            }
-            // Set password separately
-            $sql = "SET PASSWORD FOR '{$username}'@'localhost' = PASSWORD('{$mysqli->real_escape_string($password)}')";
-            if (!$mysqli->query($sql)) {
-                // Try ALTER USER for MariaDB 10.2+
-                $sql = "ALTER USER '{$username}'@'localhost' IDENTIFIED BY '{$mysqli->real_escape_string($password)}'";
-                if (!$mysqli->query($sql)) {
-                    throw new Exception('Failed to set password for database user: ' . $mysqli->error);
-                }
-            }
+            throw new Exception('Failed to create database user: ' . $mysqli->error);
         }
         
         NovaRax_Logger::info("Database user created: {$username}");
         
         // Grant privileges
-        $sql = "GRANT ALL PRIVILEGES ON `{$database_name}`.* TO '{$username}'@'localhost'";
+        $escaped_db = $mysqli->real_escape_string($database_name);
+        $sql = "GRANT ALL PRIVILEGES ON `{$escaped_db}`.* TO '{$escaped_user}'@'localhost'";
         
         if (!$mysqli->query($sql)) {
             throw new Exception('Failed to grant privileges: ' . $mysqli->error);
@@ -314,41 +365,45 @@ class NovaRax_Database_Manager {
         
         NovaRax_Logger::info("Privileges granted to {$username} on {$database_name}");
         
-//changes
-
-// IMPORTANT: Store database credentials in tenant metadata
-global $wpdb;
-$tenant_record = $wpdb->get_row($wpdb->prepare(
-    "SELECT * FROM {$wpdb->prefix}novarax_tenants WHERE database_name = %s",
-    $database_name
-), ARRAY_A);
-
-if ($tenant_record) {
-    // Get existing metadata
-    $metadata = !empty($tenant_record['metadata']) ? json_decode($tenant_record['metadata'], true) : array();
-    
-    // Add database credentials
-    $metadata['db_username'] = $username;
-    $metadata['db_password'] = $password;
-    
-    // Update tenant record
-    $wpdb->update(
-        $wpdb->prefix . 'novarax_tenants',
-        array('metadata' => json_encode($metadata)),
-        array('id' => $tenant_record['id']),
-        array('%s'),
-        array('%d')
-    );
-    
-    NovaRax_Logger::info("Database credentials stored in metadata for tenant ID: {$tenant_record['id']}");
-} else {
-    NovaRax_Logger::warning("Could not find tenant record to store credentials for database: {$database_name}");
-}
-
-//end of changes 
-
-
-
+        // ================================================================
+        // CRITICAL: Store database credentials in tenant metadata
+        // ================================================================
+        global $wpdb;
+        $tenant_record = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}novarax_tenants WHERE database_name = %s",
+            $database_name
+        ), ARRAY_A);
+        
+        if ($tenant_record) {
+            // Get existing metadata
+            $metadata = !empty($tenant_record['metadata']) ? json_decode($tenant_record['metadata'], true) : array();
+            
+            // Add database credentials
+            $metadata['db_username'] = $username;
+            $metadata['db_password'] = $password;
+            $metadata['db_host'] = 'localhost';
+            $metadata['credentials_created_at'] = current_time('mysql');
+            
+            // Update tenant record
+            $result = $wpdb->update(
+                $wpdb->prefix . 'novarax_tenants',
+                array('metadata' => json_encode($metadata)),
+                array('id' => $tenant_record['id']),
+                array('%s'),
+                array('%d')
+            );
+            
+            if ($result !== false) {
+                NovaRax_Logger::info("✓ Database credentials stored in metadata for tenant ID: {$tenant_record['id']}");
+            } else {
+                NovaRax_Logger::error("✗ Failed to store credentials in metadata for tenant ID: {$tenant_record['id']}");
+                throw new Exception('Failed to store database credentials in metadata');
+            }
+        } else {
+            NovaRax_Logger::warning("Could not find tenant record to store credentials for database: {$database_name}");
+            // Don't throw exception here - the database was created successfully
+        }
+        
         // Import WordPress core schema
         $this->import_wordpress_schema($database_name, $username, $password);
         
@@ -371,7 +426,8 @@ if ($tenant_record) {
             'error' => $e->getMessage(),
         );
     }
-} 
+}
+
     
     /**
      * Import WordPress core schema to tenant database
@@ -677,6 +733,153 @@ private function populate_tenant_database_mysqli($mysqli, $database_name) {
         
         NovaRax_Logger::info("WordPress options inserted");
         
+// ================================================================
+// CRITICAL: Insert WordPress User Roles
+// ================================================================
+$default_roles = array(
+    'administrator' => array(
+        'name' => 'Administrator',
+        'capabilities' => array(
+            'switch_themes' => false,
+            'edit_themes' => false,
+            'activate_plugins' => false,
+            'edit_plugins' => false,
+            'edit_files' => true,
+            'manage_options' => false,
+            'moderate_comments' => false,
+            'manage_categories' => false,
+            'manage_links' => false,
+            'upload_files' => true,
+            'import' => true,
+            'unfiltered_html' => false,
+            'edit_posts' => false,
+            'edit_others_posts' => false,
+            'edit_published_posts' => false,
+            'publish_posts' => false,
+            'edit_pages' => false,
+            'read' => true,
+            'level_10' => true,
+            'level_9' => true,
+            'level_8' => true,
+            'level_7' => true,
+            'level_6' => true,
+            'level_5' => true,
+            'level_4' => true,
+            'level_3' => true,
+            'level_2' => true,
+            'level_1' => true,
+            'level_0' => true,
+            'edit_others_pages' => false,
+            'edit_published_pages' => false,
+            'publish_pages' => false,
+            'delete_pages' => false,
+            'delete_others_pages' => false,
+            'delete_published_pages' => false,
+            'delete_posts' => false,
+            'delete_others_posts' => false,
+            'delete_published_posts' => false,
+            'delete_private_posts' => false,
+            'edit_private_posts' => false,
+            'read_private_posts' => false,
+            'delete_private_pages' => false,
+            'edit_private_pages' => false,
+            'read_private_pages' => false,
+//Users
+            'create_users' => true,
+            'edit_users' => true,
+            'delete_users' => true,
+            'list_users' => true,
+            'promote_users' => true,
+
+            'unfiltered_upload' => true,
+            'edit_dashboard' => false,
+            'customize' => false,
+            'delete_site' => false,
+        ),
+    ),
+    'editor' => array(
+        'name' => 'Editor',
+        'capabilities' => array(
+            'moderate_comments' => true,
+            'manage_categories' => true,
+            'manage_links' => true,
+            'upload_files' => true,
+            'unfiltered_html' => true,
+            'edit_posts' => true,
+            'edit_others_posts' => true,
+            'edit_published_posts' => true,
+            'publish_posts' => true,
+            'edit_pages' => true,
+            'read' => true,
+            'level_7' => true,
+            'level_6' => true,
+            'level_5' => true,
+            'level_4' => true,
+            'level_3' => true,
+            'level_2' => true,
+            'level_1' => true,
+            'level_0' => true,
+            'edit_others_pages' => true,
+            'edit_published_pages' => true,
+            'publish_pages' => true,
+            'delete_pages' => true,
+            'delete_others_pages' => true,
+            'delete_published_pages' => true,
+            'delete_posts' => true,
+            'delete_others_posts' => true,
+            'delete_published_posts' => true,
+            'delete_private_posts' => true,
+            'edit_private_posts' => true,
+            'read_private_posts' => true,
+            'delete_private_pages' => true,
+            'edit_private_pages' => true,
+            'read_private_pages' => true,
+        ),
+    ),
+    'author' => array(
+        'name' => 'Author',
+        'capabilities' => array(
+            'upload_files' => true,
+            'edit_posts' => true,
+            'edit_published_posts' => true,
+            'publish_posts' => true,
+            'read' => true,
+            'level_2' => true,
+            'level_1' => true,
+            'level_0' => true,
+            'delete_posts' => true,
+            'delete_published_posts' => true,
+        ),
+    ),
+    'contributor' => array(
+        'name' => 'Contributor',
+        'capabilities' => array(
+            'edit_posts' => true,
+            'read' => true,
+            'level_1' => true,
+            'level_0' => true,
+            'delete_posts' => true,
+        ),
+    ),
+    'subscriber' => array(
+        'name' => 'Subscriber',
+        'capabilities' => array(
+            'read' => true,
+            'level_0' => true,
+        ),
+    ),
+);
+
+$serialized_roles = serialize($default_roles);
+$escaped_roles = $mysqli->real_escape_string($serialized_roles);
+
+$mysqli->query("INSERT INTO wp_options (option_name, option_value, autoload) 
+                VALUES ('wp_user_roles', '{$escaped_roles}', 'yes')
+                ON DUPLICATE KEY UPDATE option_value = '{$escaped_roles}'");
+
+NovaRax_Logger::info("WordPress user roles inserted");
+
+
         // 2. Create tenant user in tenant database
         $user_login = $mysqli->real_escape_string($user->user_login);
         $user_pass = $mysqli->real_escape_string($user->user_pass); // Already hashed
@@ -957,6 +1160,10 @@ NovaRax_Logger::info("Initial WordPress settings configured");
         return $name;
     }
     
+
+
+
+
     /**
      * Check if database exists
      *

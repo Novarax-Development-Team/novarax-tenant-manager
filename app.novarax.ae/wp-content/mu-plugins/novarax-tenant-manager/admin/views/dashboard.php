@@ -37,7 +37,7 @@ $log_stats = NovaRax_Logger::get_statistics();
 
 <div class="wrap novarax-dashboard">
     <h1 class="wp-heading-inline">
-        <?php _e('NovaRax Dashboard', 'novarax-tenant-manager'); ?>
+        <?php _e('Novarax Dashboard', 'novarax-tenant-manager'); ?>
     </h1>
     
     <a href="<?php echo admin_url('admin.php?page=novarax-tenants-add'); ?>" class="page-title-action">

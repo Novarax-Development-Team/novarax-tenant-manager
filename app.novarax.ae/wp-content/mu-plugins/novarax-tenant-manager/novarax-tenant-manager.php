@@ -190,6 +190,8 @@ public function maybe_create_tables() {
         require_once NOVARAX_TM_PLUGIN_DIR . 'includes/class-tenant-validator.php';
         require_once NOVARAX_TM_PLUGIN_DIR . 'includes/class-subdomain-manager.php';
         require_once NOVARAX_TM_PLUGIN_DIR . 'includes/class-provisioning-queue.php';
+        require_once NOVARAX_TM_PLUGIN_DIR . 'includes/class-storage-calculator.php';
+
         
         // Admin classes
         require_once NOVARAX_TM_PLUGIN_DIR . 'admin/class-admin-interface.php';
@@ -245,6 +247,10 @@ public function maybe_create_tables() {
         if (class_exists('WooCommerce') && class_exists('NovaRax_WooCommerce_Integration')) {
             new NovaRax_WooCommerce_Integration();
         }
+
+        // Initialize storage calculator
+        new NovaRax_Storage_Calculator();
+
     }
     
     /**

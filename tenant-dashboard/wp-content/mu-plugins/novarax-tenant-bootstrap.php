@@ -671,6 +671,8 @@ if (!function_exists('novarax_has_module_access')) {
     }
 }
 
+
+
 // Helper function to get tenant ID
 if (!function_exists('novarax_get_tenant_id')) {
     /**
@@ -683,3 +685,105 @@ if (!function_exists('novarax_get_tenant_id')) {
         return $bootstrap->get_tenant_id();
     }
 }
+
+
+
+/**
+ * Configure tenant-specific uploads directory
+ */
+add_filter('upload_dir', 'novarax_tenant_upload_dir');
+
+function novarax_tenant_upload_dir($uploads) {
+    // Get tenant subdomain
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    
+    // Extract username from subdomain (e.g., "chris.app.novarax.ae" -> "chris")
+    $username = '';
+    if (preg_match('/^([a-z0-9-]+)\.app\.novarax\.ae$/i', $host, $matches)) {
+        $username = strtolower($matches[1]);
+    }
+    
+    if (empty($username)) {
+        // Fallback: try to get from database option
+        $username = get_option('novarax_tenant_username', '');
+    }
+    
+    if (empty($username)) {
+        // Can't determine tenant, return default
+        return $uploads;
+    }
+    
+    // Set up tenant-specific paths
+    $base_dir = WP_CONTENT_DIR . '/uploads/sites/' . $username;
+    $base_url = WP_CONTENT_URL . '/uploads/sites/' . $username;
+    
+    // Create base directory if it doesn't exist
+    if (!file_exists($base_dir)) {
+        wp_mkdir_p($base_dir);
+        
+        // Create index.php for security
+        $index_file = $base_dir . '/index.php';
+        if (!file_exists($index_file)) {
+            file_put_contents($index_file, '<?php // Silence is golden');
+        }
+    }
+    
+    // Get time-based subdirectory
+    $time = current_time('mysql');
+    $y = substr($time, 0, 4);
+    $m = substr($time, 5, 2);
+    
+    // Build paths
+    $subdir = "/$y/$m";
+    $path = $base_dir . $subdir;
+    $url = $base_url . $subdir;
+    
+    // Create year/month directories if they don't exist
+    if (!file_exists($path)) {
+        wp_mkdir_p($path);
+    }
+    
+    // Return modified upload directory array
+    return array(
+        'path'    => $path,
+        'url'     => $url,
+        'subdir'  => $subdir,
+        'basedir' => $base_dir,
+        'baseurl' => $base_url,
+        'error'   => false,
+    );
+}
+
+/**
+ * Store tenant username in options on bootstrap
+ * Add this to the bootstrap initialization
+ */
+add_action('init', 'novarax_store_tenant_username', 1);
+
+function novarax_store_tenant_username() {
+    // Only run once
+    if (get_option('novarax_tenant_username')) {
+        return;
+    }
+    
+    // Get tenant subdomain
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    
+    // Extract username
+    if (preg_match('/^([a-z0-9-]+)\.app\.novarax\.ae$/i', $host, $matches)) {
+        $username = strtolower($matches[1]);
+        update_option('novarax_tenant_username', $username, false);
+    }
+}
+
+/**
+ * Disable WordPress media library organization by date
+ * (Optional - uncomment if you want flat file structure)
+ */
+// add_filter('upload_dir', 'novarax_remove_upload_subdir');
+// function novarax_remove_upload_subdir($uploads) {
+//     $uploads['subdir'] = '';
+//     $uploads['path'] = $uploads['basedir'];
+//     $uploads['url'] = $uploads['baseurl'];
+//     return $uploads;
+// } 

@@ -244,10 +244,10 @@ class NovaRax_Tenant_Operations {
             $this->update_tenant_status($tenant_id, 'pending');
             
             // Create tenant database
-            $db_result = $this->db_manager->create_tenant_database(
-                $tenant->database_name,
-                substr($tenant->database_name, 0, 16)
-            );
+           $db_result = $this->db_manager->create_tenant_database(
+            $tenant->database_name
+            // No second parameter! Let the method generate unique username
+        );
             
             if (!$db_result['success']) {
                 throw new Exception('Failed to create database: ' . $db_result['error']);
@@ -753,6 +753,107 @@ if ($api_result['success']) {
         );
     }
     
+
+/**
+ * Create uploads directory for tenant
+ *
+ * @param object $tenant Tenant object
+ * @return bool Success status
+ */
+private function create_tenant_uploads_directory($tenant) {
+    // Get base uploads path from tenant codebase
+    $codebase_path = get_option('novarax_tm_tenant_codebase_path', '/var/www/tenant-dashboard');
+    $uploads_base = $codebase_path . '/wp-content/uploads';
+    
+    if (!is_dir($uploads_base)) {
+        NovaRax_Logger::log("Uploads base directory not found: {$uploads_base}", 'error');
+        return false;
+    }
+    
+    // Extract username from subdomain
+    $username = explode('.', $tenant->subdomain)[0];
+    
+    // Create directory structure: uploads/sites/{username}
+    $sites_dir = $uploads_base . '/sites';
+    if (!is_dir($sites_dir)) {
+        wp_mkdir_p($sites_dir);
+        chmod($sites_dir, 0755);
+    }
+    
+    $tenant_uploads_path = $sites_dir . '/' . $username;
+    
+    // Create tenant uploads directory
+    if (!is_dir($tenant_uploads_path)) {
+        if (!wp_mkdir_p($tenant_uploads_path)) {
+            NovaRax_Logger::log("Failed to create uploads directory: {$tenant_uploads_path}", 'error');
+            return false;
+        }
+        
+        chmod($tenant_uploads_path, 0755);
+        
+        // Try to set owner (requires proper permissions)
+        @chown($tenant_uploads_path, 'www-data');
+        @chgrp($tenant_uploads_path, 'www-data');
+        
+        NovaRax_Logger::log("Created uploads directory for tenant {$username}: {$tenant_uploads_path}", 'info');
+    }
+    
+    // Create year/month structure for current date
+    $current_year = date('Y');
+    $current_month = date('m');
+    $year_month_path = $tenant_uploads_path . '/' . $current_year . '/' . $current_month;
+    
+    if (!is_dir($year_month_path)) {
+        wp_mkdir_p($year_month_path);
+        chmod($year_month_path, 0755);
+        @chown($year_month_path, 'www-data');
+        @chgrp($year_month_path, 'www-data');
+    }
+    
+    // Create security files
+    $this->create_uploads_security_files($tenant_uploads_path);
+    
+    return true;
+}
+
+/**
+ * Create security files in uploads directory
+ *
+ * @param string $uploads_path Uploads directory path
+ */
+private function create_uploads_security_files($uploads_path) {
+    // Create index.php
+    $index_file = $uploads_path . '/index.php';
+    if (!file_exists($index_file)) {
+        file_put_contents($index_file, '<?php // Silence is golden');
+        chmod($index_file, 0644);
+    }
+    
+    // Create .htaccess
+    $htaccess_file = $uploads_path . '/.htaccess';
+    if (!file_exists($htaccess_file)) {
+        $htaccess_content = "# Protect against script execution
+<Files *.php>
+    Deny from all
+</Files>
+
+# Allow common media types
+<FilesMatch \"\.(jpg|jpeg|png|gif|svg|webp|ico|pdf|doc|docx|xls|xlsx|ppt|pptx|zip|mp4|mp3|wav)$\">
+    Allow from all
+</FilesMatch>
+
+# Prevent directory listing
+Options -Indexes
+";
+        file_put_contents($htaccess_file, $htaccess_content);
+        chmod($htaccess_file, 0644);
+    }
+}
+
+
+
+
+
     /**
      * Log audit trail
      *

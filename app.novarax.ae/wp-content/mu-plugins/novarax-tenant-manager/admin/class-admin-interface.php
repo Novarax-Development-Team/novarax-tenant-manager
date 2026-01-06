@@ -307,7 +307,128 @@ private function init_ajax_handlers() {
      */
     private function register_ajax_handlers() {
         $ajax = new NovaRax_Admin_Ajax();
+
+// Existing AJAX handlers...
+    add_action('wp_ajax_novarax_check_username', array($this, 'ajax_check_username'));
+    add_action('wp_ajax_novarax_provision_tenant', array($this, 'ajax_provision_tenant'));
+    add_action('wp_ajax_novarax_delete_tenant', array($this, 'ajax_delete_tenant'));
+    add_action('wp_ajax_novarax_update_storage', array($this, 'ajax_update_storage'));
+    
+    // NEW: Webhook testing handler
+    add_action('wp_ajax_novarax_test_webhook', array($this, 'ajax_test_webhook'));
+
     }
+
+/**
+ * AJAX: Test webhook endpoint
+ */
+public function ajax_test_webhook() {
+    // Verify nonce
+    check_ajax_referer('novarax_test_webhook', 'nonce');
+    
+    // Check permissions
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array(
+            'message' => __('You do not have permission to test webhooks.', 'novarax-tenant-manager')
+        ));
+    }
+    
+    // Get parameters
+    $event = isset($_POST['event']) ? sanitize_text_field($_POST['event']) : '';
+    $webhook_url = isset($_POST['webhook_url']) ? esc_url_raw($_POST['webhook_url']) : '';
+    
+    if (empty($webhook_url)) {
+        wp_send_json_error(array(
+            'message' => __('Webhook URL is required.', 'novarax-tenant-manager')
+        ));
+    }
+    
+    // Create test payload
+    $test_payload = array(
+        'event' => $event,
+        'timestamp' => current_time('c'),
+        'tenant_id' => 0,
+        'tenant_username' => 'test_user',
+        'email' => 'test@example.com',
+        'subdomain' => 'test.app.novarax.ae',
+        'status' => 'pending',
+        'test_mode' => true,
+        'message' => 'This is a test webhook from NovaRax',
+    );
+    
+    // Add event-specific data
+    switch ($event) {
+        case 'order_completed':
+            $test_payload['order_id'] = 999;
+            $test_payload['order_total'] = '99.00';
+            break;
+        case 'provisioning_started':
+            $test_payload['status'] = 'provisioning';
+            break;
+        case 'provisioning_completed':
+            $test_payload['status'] = 'active';
+            $test_payload['dashboard_url'] = 'https://test.app.novarax.ae';
+            break;
+    }
+    
+    // Get webhook secret
+    $webhook_secret = get_option('novarax_webhook_secret', '');
+    
+    // Generate signature
+    $payload_json = json_encode($test_payload);
+    $signature = hash_hmac('sha256', $payload_json, $webhook_secret);
+    
+    // Send webhook request
+    $response = wp_remote_post($webhook_url, array(
+        'body' => $payload_json,
+        'headers' => array(
+            'Content-Type' => 'application/json',
+            'X-NovaRax-Event' => $event,
+            'X-NovaRax-Signature' => $signature,
+            'X-NovaRax-Timestamp' => time(),
+            'User-Agent' => 'NovaRax-Webhooks/1.0',
+        ),
+        'timeout' => 15,
+        'blocking' => true,
+    ));
+    
+    // Check for errors
+    if (is_wp_error($response)) {
+        wp_send_json_error(array(
+            'message' => sprintf(
+                __('Failed to connect: %s', 'novarax-tenant-manager'),
+                $response->get_error_message()
+            )
+        ));
+    }
+    
+    // Get response code
+    $response_code = wp_remote_retrieve_response_code($response);
+    $response_body = wp_remote_retrieve_body($response);
+    
+    // Check response code
+    if ($response_code >= 200 && $response_code < 300) {
+        wp_send_json_success(array(
+            'message' => sprintf(
+                __('Webhook sent successfully! Response code: %d', 'novarax-tenant-manager'),
+                $response_code
+            ),
+            'response_code' => $response_code,
+            'response_body' => $response_body,
+        ));
+    } else {
+        wp_send_json_error(array(
+            'message' => sprintf(
+                __('Webhook endpoint returned error code %d: %s', 'novarax-tenant-manager'),
+                $response_code,
+                wp_trim_words($response_body, 20)
+            ),
+            'response_code' => $response_code,
+        ));
+    }
+}
+
+
     
     /**
      * Handle form submissions
@@ -483,55 +604,136 @@ private function init_ajax_handlers() {
         exit;
     }
     
-    /**
-     * Handle settings update
-     */
-    private function handle_update_settings() {
-        // Update settings
-        $settings = array(
+   /**
+ * Handle settings update
+ */
+private function handle_update_settings() {
+    // Define all settings by tab
+    $all_settings = array(
+        'general' => array(
+            'novarax_tm_subdomain_suffix',
             'novarax_tm_tenant_storage_limit',
             'novarax_tm_tenant_user_limit',
-            'novarax_tm_subdomain_suffix',
+            'novarax_tm_tenant_db_prefix',
+            'novarax_tm_tenant_codebase_path',
             'novarax_tm_auto_provision',
             'novarax_tm_grace_period_days',
+        ),
+        'marketplace' => array(
+            'novarax_post_registration_redirect',
+            'novarax_marketplace_page_url',
+            'novarax_auto_provision_after_checkout',
+            'novarax_allow_direct_checkout',
+            'novarax_minimum_module_selection',
+            'novarax_show_provisioning_status',
+            'novarax_provisioning_refresh_interval',
+            'novarax_thankyou_custom_message',
+            'novarax_enable_onboarding_tour',
+            'novarax_tenant_landing_page',
+        ),
+        'webhooks' => array(
+            'novarax_webhooks_enabled',
+            'novarax_webhook_secret',
+            'novarax_webhook_retry_attempts',
+            'novarax_webhook_timeout',
+            // Individual webhook settings
+            'novarax_webhook_account_created_enabled',
+            'novarax_webhook_account_created_url',
+            'novarax_webhook_provisioning_started_enabled',
+            'novarax_webhook_provisioning_started_url',
+            'novarax_webhook_provisioning_completed_enabled',
+            'novarax_webhook_provisioning_completed_url',
+            'novarax_webhook_order_completed_enabled',
+            'novarax_webhook_order_completed_url',
+        ),
+        'email' => array(
             'novarax_tm_from_email',
             'novarax_tm_from_name',
             'novarax_tm_email_logo',
             'novarax_tm_email_primary_color',
-        );
-        
-        foreach ($settings as $setting) {
-            if (isset($_POST[$setting])) {
-                $value = $_POST[$setting];
-                
-                // Sanitize based on type
-                if (strpos($setting, '_limit') !== false || strpos($setting, '_days') !== false) {
-                    $value = intval($value);
-                } elseif (strpos($setting, 'email') !== false && strpos($setting, 'logo') === false) {
-                    $value = sanitize_email($value);
-                } elseif (strpos($setting, 'url') !== false || strpos($setting, 'logo') !== false) {
-                    $value = esc_url_raw($value);
-                } elseif ($setting === 'novarax_tm_auto_provision') {
-                    $value = ($value === '1');
-                } else {
-                    $value = sanitize_text_field($value);
-                }
-                
-                update_option($setting, $value);
+        ),
+        'advanced' => array(
+            'novarax_tm_debug_mode',
+            'novarax_tm_log_level',
+            'novarax_tm_api_enabled',
+            'novarax_tm_api_rate_limit',
+        ),
+    );
+    
+    // Get current tab
+    $current_tab = isset($_POST['novarax_tm_settings_tab']) ? sanitize_text_field($_POST['novarax_tm_settings_tab']) : 'general';
+    
+    // Get settings for current tab
+    $settings = isset($all_settings[$current_tab]) ? $all_settings[$current_tab] : array();
+    
+    // Allow other plugins to add their settings
+    $settings = apply_filters('novarax_settings_fields_' . $current_tab, $settings);
+    
+    foreach ($settings as $setting) {
+        if (isset($_POST[$setting])) {
+            $value = $_POST[$setting];
+            
+            // Sanitize based on setting type
+            if (strpos($setting, '_limit') !== false || 
+                strpos($setting, '_days') !== false || 
+                strpos($setting, '_attempts') !== false || 
+                strpos($setting, '_timeout') !== false || 
+                strpos($setting, '_interval') !== false ||
+                strpos($setting, '_selection') !== false) {
+                // Numeric settings
+                $value = intval($value);
+            } elseif (strpos($setting, 'email') !== false && strpos($setting, 'logo') === false && strpos($setting, 'message') === false) {
+                // Email settings
+                $value = sanitize_email($value);
+            } elseif (strpos($setting, '_url') !== false || strpos($setting, 'logo') !== false || strpos($setting, 'codebase_path') !== false) {
+                // URL settings
+                $value = esc_url_raw($value);
+            } elseif (strpos($setting, '_enabled') !== false || 
+                      $setting === 'novarax_tm_auto_provision' ||
+                      $setting === 'novarax_webhooks_enabled' ||
+                      $setting === 'novarax_allow_direct_checkout' ||
+                      $setting === 'novarax_show_provisioning_status' ||
+                      $setting === 'novarax_enable_onboarding_tour') {
+                // Boolean/checkbox settings
+                $value = ($value === '1' || $value === 'on') ? '1' : '0';
+            } elseif (strpos($setting, '_message') !== false) {
+                // Text area settings
+                $value = sanitize_textarea_field($value);
+            } else {
+                // Default text sanitization
+                $value = sanitize_text_field($value);
+            }
+            
+            update_option($setting, $value);
+        } else {
+            // Handle unchecked checkboxes (they don't send POST data)
+            if (strpos($setting, '_enabled') !== false || 
+                $setting === 'novarax_tm_auto_provision' ||
+                $setting === 'novarax_webhooks_enabled' ||
+                $setting === 'novarax_allow_direct_checkout' ||
+                $setting === 'novarax_show_provisioning_status' ||
+                $setting === 'novarax_enable_onboarding_tour') {
+                update_option($setting, '0');
             }
         }
-        
-        $redirect_url = add_query_arg(
-            array(
-                'page' => $this->menu_slug . '-settings',
-                'message' => 'settings_saved',
-            ),
-            admin_url('admin.php')
-        );
-        
-        wp_redirect($redirect_url);
-        exit;
     }
+    
+    // Log settings update
+    NovaRax_Logger::log("Settings updated for tab: {$current_tab}", 'info');
+    
+    // Redirect back to settings page
+    $redirect_url = add_query_arg(
+        array(
+            'page' => $this->menu_slug . '-settings',
+            'tab' => $current_tab,
+            'message' => 'settings_saved',
+        ),
+        admin_url('admin.php')
+    );
+    
+    wp_redirect($redirect_url);
+    exit;
+}
     
     /**
      * Display admin notices
